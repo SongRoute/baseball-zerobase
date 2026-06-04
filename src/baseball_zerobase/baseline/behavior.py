@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from math import isfinite
-from typing import Any, Literal, Mapping, Protocol
+from typing import Any, Literal, Mapping, Never, Protocol
 
-ActionKey = tuple[str, str | None]
+from baseball_zerobase.data.contracts import RelativeZone
+
+ActionKey = tuple[str, str]
 BackoffLevel = Literal["balls_strikes_stand_p_throws", "balls_strikes", "global"]
 _FullKey = tuple[int, int, str, str]
 _CountKey = tuple[int, int]
@@ -22,6 +25,7 @@ class EmpiricalBehaviorModel:
     min_support: int = 1
     alpha: float = 0.5
     last_backoff_level: BackoffLevel | None = field(default=None, init=False)
+    training_manifest_hash: str | None = field(default=None, init=False)
 
     _actions: list[ActionKey] = field(default_factory=list, init=False)
     _global_counts: Counter[ActionKey] = field(default_factory=Counter, init=False)
@@ -41,12 +45,16 @@ class EmpiricalBehaviorModel:
         if self.alpha <= 0:
             raise ValueError("alpha must be positive")
 
-    def fit(self, frame: object) -> EmpiricalBehaviorModel:
+    def fit(self, frame: object, *, training_manifest_hash: str) -> EmpiricalBehaviorModel:
+        if not _string_or_none(training_manifest_hash):
+            raise ValueError("training_manifest_hash is required")
+
         self._actions = []
         self._global_counts = Counter()
         self._full_counts = defaultdict(Counter)
         self._count_counts = defaultdict(Counter)
         self.last_backoff_level = None
+        self.training_manifest_hash = training_manifest_hash
 
         observed_actions: set[ActionKey] = set()
         for row in _iter_rows(frame):
@@ -157,6 +165,71 @@ class EmpiricalBehaviorModel:
 
         return self._global_counts, "global"
 
+    def to_json(self) -> str:
+        if not self._fitted:
+            raise ValueError("EmpiricalBehaviorModel must be fit before serialization")
+        if self.training_manifest_hash is None:
+            raise ValueError("training_manifest_hash is required")
+
+        payload = {
+            "model_type": "EmpiricalBehaviorModel",
+            "version": 1,
+            "training_manifest_hash": self.training_manifest_hash,
+            "settings": {
+                "min_support": self.min_support,
+                "alpha": self.alpha,
+                "backoff_levels": [
+                    "balls_strikes_stand_p_throws",
+                    "balls_strikes",
+                    "global",
+                ],
+            },
+            "actions": [_action_to_json(action) for action in self._actions],
+            "counts": {
+                "global": _counter_to_json(self._global_counts),
+                "balls_strikes_stand_p_throws": _keyed_counts_to_json(self._full_counts),
+                "balls_strikes": _keyed_counts_to_json(self._count_counts),
+            },
+        }
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+    @classmethod
+    def from_json(cls, value: str) -> EmpiricalBehaviorModel:
+        payload = json.loads(value)
+        settings = payload.get("settings")
+        if not isinstance(settings, Mapping):
+            raise ValueError("serialized behavior model is missing settings")
+
+        model = cls(
+            min_support=int(settings["min_support"]),
+            alpha=float(settings["alpha"]),
+        )
+        training_manifest_hash = _string_or_none(payload.get("training_manifest_hash"))
+        if training_manifest_hash is None:
+            raise ValueError("serialized behavior model is missing training_manifest_hash")
+        model.training_manifest_hash = training_manifest_hash
+
+        actions = payload.get("actions")
+        if not isinstance(actions, list):
+            raise ValueError("serialized behavior model is missing actions")
+        model._actions = [_action_from_json(action) for action in actions]
+
+        counts = payload.get("counts")
+        if not isinstance(counts, Mapping):
+            raise ValueError("serialized behavior model is missing counts")
+
+        model._global_counts = _counter_from_json(counts.get("global"))
+        model._full_counts = defaultdict(
+            Counter,
+            _keyed_counts_from_json(counts.get("balls_strikes_stand_p_throws"), key_size=4),
+        )
+        model._count_counts = defaultdict(
+            Counter,
+            _keyed_counts_from_json(counts.get("balls_strikes"), key_size=2),
+        )
+        model._fitted = True
+        return model
+
 
 def _iter_rows(frame: object) -> list[Mapping[str, Any]]:
     to_dicts = getattr(frame, "to_dicts", None)
@@ -179,12 +252,13 @@ def _iter_rows(frame: object) -> list[Mapping[str, Any]]:
 
 
 def _action_from_row(row: Mapping[str, Any]) -> ActionKey | None:
-    pitch_type = _string_or_none(row.get("pitch_type"))
-    relative_zone = _string_or_none(row.get("relative_zone"))
-    if relative_zone is None:
-        relative_zone = _string_or_none(row.get("zone"))
+    if _string_or_none(row.get("zone")) is not None:
+        _raise_raw_zone_error()
 
-    if pitch_type is not None:
+    pitch_type = _string_or_none(row.get("pitch_type"))
+    relative_zone = _relative_zone_or_none(row.get("relative_zone"))
+
+    if pitch_type is not None and relative_zone is not None:
         return (pitch_type, relative_zone)
 
     action = row.get("action")
@@ -195,25 +269,28 @@ def _action_from_row(row: Mapping[str, Any]) -> ActionKey | None:
 
 def _parse_action(action: object) -> ActionKey | None:
     if isinstance(action, Mapping):
+        if _string_or_none(action.get("zone")) is not None:
+            _raise_raw_zone_error()
         pitch_type = _string_or_none(action.get("pitch_type"))
-        relative_zone = _string_or_none(action.get("relative_zone"))
-        if relative_zone is None:
-            relative_zone = _string_or_none(action.get("zone"))
-        if pitch_type is None:
+        relative_zone = _relative_zone_or_none(action.get("relative_zone"))
+        if pitch_type is None or relative_zone is None:
             return None
         return (pitch_type, relative_zone)
 
     if isinstance(action, tuple | list) and len(action) == 2:
         pitch_type = _string_or_none(action[0])
-        if pitch_type is None:
+        relative_zone = _relative_zone_or_none(action[1])
+        if pitch_type is None or relative_zone is None:
             return None
-        return (pitch_type, _string_or_none(action[1]))
+        return (pitch_type, relative_zone)
 
     pitch_type_attr = _string_or_none(getattr(action, "pitch_type", None))
     if pitch_type_attr is not None:
-        relative_zone_attr = _string_or_none(getattr(action, "relative_zone", None))
+        if _string_or_none(getattr(action, "zone", None)) is not None:
+            _raise_raw_zone_error()
+        relative_zone_attr = _relative_zone_or_none(getattr(action, "relative_zone", None))
         if relative_zone_attr is None:
-            relative_zone_attr = _string_or_none(getattr(action, "zone", None))
+            return None
         return (pitch_type_attr, relative_zone_attr)
 
     action_text = _string_or_none(action)
@@ -224,11 +301,12 @@ def _parse_action(action: object) -> ActionKey | None:
         if delimiter in action_text:
             pitch_type, relative_zone = action_text.split(delimiter, 1)
             normalized_pitch_type = _string_or_none(pitch_type)
-            if normalized_pitch_type is None:
+            normalized_zone = _relative_zone_or_none(relative_zone)
+            if normalized_pitch_type is None or normalized_zone is None:
                 return None
-            return (normalized_pitch_type, _string_or_none(relative_zone))
+            return (normalized_pitch_type, normalized_zone)
 
-    return (action_text, None)
+    return None
 
 
 def _row_weight(row: Mapping[str, Any]) -> int:
@@ -302,6 +380,20 @@ def _optional_handedness(value: object) -> str | None:
     return normalized
 
 
+def _relative_zone_or_none(value: object) -> str | None:
+    normalized = _string_or_none(value)
+    if normalized is None:
+        return None
+    try:
+        return RelativeZone(normalized).value
+    except ValueError:
+        return None
+
+
+def _raise_raw_zone_error() -> Never:
+    raise ValueError("raw Statcast zone is not allowed; use batter-relative relative_zone")
+
+
 def _string_or_none(value: object) -> str | None:
     if value is None:
         return None
@@ -311,3 +403,57 @@ def _string_or_none(value: object) -> str | None:
     if not text:
         return None
     return text
+
+
+def _action_to_json(action: ActionKey) -> list[str]:
+    return [action[0], action[1]]
+
+
+def _action_from_json(value: object) -> ActionKey:
+    if not isinstance(value, list) or len(value) != 2:
+        raise ValueError("serialized action must be a two-item list")
+    pitch_type = _string_or_none(value[0])
+    relative_zone = _relative_zone_or_none(value[1])
+    if pitch_type is None or relative_zone is None:
+        raise ValueError("serialized action is invalid")
+    return (pitch_type, relative_zone)
+
+
+def _counter_to_json(counter: Counter[ActionKey]) -> list[dict[str, object]]:
+    return [
+        {"action": _action_to_json(action), "count": count}
+        for action, count in sorted(counter.items(), key=lambda item: item[0])
+    ]
+
+
+def _counter_from_json(value: object) -> Counter[ActionKey]:
+    if not isinstance(value, list):
+        raise ValueError("serialized counter must be a list")
+    counter: Counter[ActionKey] = Counter()
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ValueError("serialized counter item must be an object")
+        action = _action_from_json(item.get("action"))
+        counter[action] = int(item["count"])
+    return counter
+
+
+def _keyed_counts_to_json(counts: Mapping[tuple[Any, ...], Counter[ActionKey]]) -> list[dict[str, object]]:
+    return [
+        {"key": list(key), "actions": _counter_to_json(counter)}
+        for key, counter in sorted(counts.items(), key=lambda item: item[0])
+    ]
+
+
+def _keyed_counts_from_json(value: object, *, key_size: int) -> dict[tuple[Any, ...], Counter[ActionKey]]:
+    if not isinstance(value, list):
+        raise ValueError("serialized keyed counts must be a list")
+    counts: dict[tuple[Any, ...], Counter[ActionKey]] = {}
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ValueError("serialized keyed count item must be an object")
+        key = item.get("key")
+        if not isinstance(key, list) or len(key) != key_size:
+            raise ValueError("serialized keyed count key has invalid shape")
+        counts[tuple(key)] = _counter_from_json(item.get("actions"))
+    return counts
