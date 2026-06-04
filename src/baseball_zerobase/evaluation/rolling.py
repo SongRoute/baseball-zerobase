@@ -15,7 +15,7 @@ from baseball_zerobase.baseline.behavior import EmpiricalBehaviorModel
 from baseball_zerobase.baseline.transition import EmpiricalTransitionModel
 from baseball_zerobase.data.contracts import OutcomeLabel, TransitionAtom
 from baseball_zerobase.data.manifest import manifest_path_for, sha256_file
-from baseball_zerobase.data.splits import DatasetRole, require_dev_role
+from baseball_zerobase.data.splits import DatasetRole, guard_dev_path, require_dev_role
 from baseball_zerobase.evaluation.metrics import (
     ActionRankingMetrics,
     action_ranking_metrics,
@@ -82,12 +82,17 @@ def evaluate_rolling(
     dataset: Path,
     output_dir: Path,
     *,
+    project_root: Path | None = None,
     trials: int = 100,
     seed: int = 20240604,
 ) -> RollingEvaluationSummary:
     require_dev_role(DatasetRole.DEV_REGULAR)
     dataset_path = dataset.resolve()
     report_dir = output_dir.resolve()
+    root = project_root.resolve() if project_root is not None else _infer_project_root(dataset_path)
+    locked_dir = root / "data" / "locked"
+    guard_dev_path(dataset_path, locked_dir)
+    guard_dev_path(report_dir, locked_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
     dataset_manifest_hash = _dataset_manifest_hash(dataset_path)
@@ -138,6 +143,10 @@ def evaluate_fold(
     train_year_set = {int(year) for year in train_years}
     train_rows = [row for row in rows if _row_year(row) in train_year_set]
     validation_rows = [row for row in rows if _row_year(row) == validation_year]
+    if not train_rows:
+        raise ValueError(f"no training rows for years {tuple(sorted(train_year_set))}")
+    if not validation_rows:
+        raise ValueError(f"no validation rows for year {validation_year}")
 
     behavior_metrics = ActionRankingMetrics(0.0, 0.0, 0.0, 0)
     transition_nll = 0.0
@@ -149,33 +158,32 @@ def evaluate_fold(
     truncated_trials = 0
     simulated_trials = 0
 
-    if train_rows and validation_rows:
-        train_frame = pl.DataFrame(train_rows)
-        behavior_model = EmpiricalBehaviorModel().fit(
-            train_frame,
-            training_manifest_hash=dataset_manifest_hash,
-        )
-        transition_model = EmpiricalTransitionModel().fit(
-            train_frame,
-            training_manifest_hash=dataset_manifest_hash,
-        )
-        behavior_metrics, behavior_backoffs = _evaluate_behavior(behavior_model, validation_rows)
-        transition_nll, transition_brier, transition_backoffs = _evaluate_transitions(
-            transition_model,
-            validation_rows,
-        )
-        (
-            predicted_runs,
-            actual_runs,
-            truncated_trials,
-            simulated_trials,
-        ) = _simulate_validation_innings(
-            behavior_model,
-            transition_model,
-            validation_rows,
-            trials=trials,
-            seed=seed,
-        )
+    train_frame = pl.DataFrame(train_rows)
+    behavior_model = EmpiricalBehaviorModel().fit(
+        train_frame,
+        training_manifest_hash=dataset_manifest_hash,
+    )
+    transition_model = EmpiricalTransitionModel().fit(
+        train_frame,
+        training_manifest_hash=dataset_manifest_hash,
+    )
+    behavior_metrics, behavior_backoffs = _evaluate_behavior(behavior_model, validation_rows)
+    transition_nll, transition_brier, transition_backoffs = _evaluate_transitions(
+        transition_model,
+        validation_rows,
+    )
+    (
+        predicted_runs,
+        actual_runs,
+        truncated_trials,
+        simulated_trials,
+    ) = _simulate_validation_innings(
+        behavior_model,
+        transition_model,
+        validation_rows,
+        trials=trials,
+        seed=seed,
+    )
 
     inning_metrics = inning_distribution_metrics(predicted=predicted_runs, actual=actual_runs)
     return FoldEvaluationReport(
@@ -236,12 +244,10 @@ def _evaluate_transitions(
         context = _transition_context(row)
         if atom is None or context is None:
             continue
-        losses.append(-model.log_probability(atom, context))
-        if model.last_backoff_level is not None:
-            backoffs[model.last_backoff_level] += 1
         distribution = model.predict_distribution(**context)
         if model.last_backoff_level is not None:
             backoffs[model.last_backoff_level] += 1
+        losses.append(-model.log_probability(atom, context))
         outcome_probabilities.append(_outcome_distribution(distribution))
         actual_outcomes.append(atom.outcome.value)
     return (
@@ -371,12 +377,28 @@ def _fold_report_name(report: FoldEvaluationReport) -> str:
 
 
 def _dataset_manifest_hash(dataset_path: Path) -> str:
+    actual_hash = sha256_file(dataset_path)
     manifest_path = manifest_path_for(dataset_path)
     if manifest_path.exists():
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
         if isinstance(payload, dict) and isinstance(payload.get("sha256"), str):
-            return payload["sha256"]
-    return f"sha256:{sha256_file(dataset_path)}"
+            manifest_hash = payload["sha256"]
+            if manifest_hash != actual_hash:
+                raise ValueError(
+                    "dataset manifest sha256 does not match dataset bytes: "
+                    f"{manifest_hash} != {actual_hash}"
+                )
+            return manifest_hash
+    return actual_hash
+
+
+def _infer_project_root(dataset_path: Path) -> Path:
+    parts = dataset_path.resolve().parts
+    if "data" in parts:
+        data_index = len(parts) - 1 - tuple(reversed(parts)).index("data")
+        if data_index > 0:
+            return Path(*parts[:data_index])
+    return Path.cwd()
 
 
 def _iter_rows(frame: object) -> list[Mapping[str, Any]]:

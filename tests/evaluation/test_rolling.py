@@ -2,7 +2,10 @@ from datetime import date
 import json
 
 import polars as pl
+import pytest
 
+from baseball_zerobase.data.manifest import sha256_file
+from baseball_zerobase.data.splits import LockedDataError
 from baseball_zerobase.evaluation.rolling import evaluate_fold, evaluate_rolling, rolling_folds
 
 
@@ -40,7 +43,7 @@ def test_evaluate_rolling_writes_fold_reports_and_korean_markdown_summary(tmp_pa
     output_dir = tmp_path / "reports"
     _fixture_frame().write_parquet(dataset_path)
     dataset_path.with_name("dev_dataset.parquet.manifest.json").write_text(
-        json.dumps({"sha256": "sha256:fixture"}),
+        json.dumps({"sha256": sha256_file(dataset_path)}),
         encoding="utf-8",
     )
 
@@ -52,6 +55,69 @@ def test_evaluate_rolling_writes_fold_reports_and_korean_markdown_summary(tmp_pa
     markdown = (output_dir / "rolling_summary.md").read_text(encoding="utf-8")
     assert "## Korean Summary / 한국어 요약" in markdown
     assert "검증" in markdown
+
+
+def test_evaluate_rolling_rejects_locked_dataset_path(tmp_path) -> None:
+    project_root = tmp_path / "project"
+    dataset_path = project_root / "data" / "locked" / "dev_dataset.parquet"
+    dataset_path.parent.mkdir(parents=True)
+    _fixture_frame().write_parquet(dataset_path)
+
+    with pytest.raises(LockedDataError):
+        evaluate_rolling(dataset_path, tmp_path / "reports", project_root=project_root, trials=2)
+
+
+def test_evaluate_rolling_infers_nearest_project_data_root_for_locked_path(tmp_path) -> None:
+    dataset_path = (
+        tmp_path
+        / "outer"
+        / "data"
+        / "work"
+        / "project"
+        / "data"
+        / "locked"
+        / "dev_dataset.parquet"
+    )
+    dataset_path.parent.mkdir(parents=True)
+    _fixture_frame().write_parquet(dataset_path)
+
+    with pytest.raises(LockedDataError):
+        evaluate_rolling(dataset_path, tmp_path / "reports", trials=2)
+
+
+def test_evaluate_rolling_rejects_stale_manifest_hash(tmp_path) -> None:
+    dataset_path = tmp_path / "dev_dataset.parquet"
+    _fixture_frame().write_parquet(dataset_path)
+    dataset_path.with_name("dev_dataset.parquet.manifest.json").write_text(
+        json.dumps({"sha256": "sha256:stale"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="manifest sha256"):
+        evaluate_rolling(dataset_path, tmp_path / "reports", trials=2)
+
+
+def test_evaluate_fold_rejects_missing_validation_rows() -> None:
+    with pytest.raises(ValueError, match="no validation rows"):
+        evaluate_fold(
+            _fixture_frame().filter(pl.col("game_date").dt.year() != 2025),
+            train_years=(2022, 2023, 2024),
+            validation_year=2025,
+            trials=2,
+            dataset_manifest_hash="sha256:test",
+        )
+
+
+def test_transition_backoff_distribution_counts_validation_rows_once() -> None:
+    report = evaluate_fold(
+        _fixture_frame(),
+        train_years=(2022,),
+        validation_year=2023,
+        trials=2,
+        dataset_manifest_hash="sha256:test",
+    )
+
+    assert sum(report.transition_backoff_distribution.values()) == report.validation_row_count
 
 
 def _fixture_frame() -> pl.DataFrame:

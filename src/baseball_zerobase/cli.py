@@ -186,7 +186,7 @@ def evaluate_rolling_command(
     settings = load_settings(config)
     dataset_path = require_dev_input(dataset, settings)
     report_dir = require_dev_input(output_dir, settings)
-    summary = evaluate_rolling(dataset_path, report_dir)
+    summary = evaluate_rolling(dataset_path, report_dir, project_root=settings.project_root)
     typer.echo(f"Wrote {len(summary.fold_reports)} rolling fold reports to {summary.output_dir}")
 
 
