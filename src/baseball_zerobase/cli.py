@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -14,10 +14,20 @@ from baseball_zerobase.data.snapshots import (
     write_development_dataset,
     write_snapshot_dataset,
 )
-from baseball_zerobase.data.splits import DatasetRole, LockedDataError, classify_row, require_dev_role
+from baseball_zerobase.data.splits import (
+    DatasetRole,
+    LockedDataError,
+    classify_row,
+    require_dev_role,
+)
 from baseball_zerobase.data.statcast import download_statcast_range
+from baseball_zerobase.data.starter_lineup import attach_starter_and_lineup_context
 from baseball_zerobase.data.validation import LeakageError, ValidationReport, audit_snapshots
-from baseball_zerobase.evaluation.rolling import evaluate_rolling
+from baseball_zerobase.evaluation.rolling import (
+    FoldEvaluationReport,
+    evaluate_fold,
+    evaluate_rolling,
+)
 from baseball_zerobase.paths import require_dev_input
 
 app = typer.Typer(no_args_is_help=True)
@@ -31,6 +41,26 @@ def main() -> None:
 @app.command()
 def version() -> None:
     typer.echo("0.1.0")
+
+
+@app.command("pipeline-smoke")
+def pipeline_smoke_command() -> None:
+    """Run a local synthetic end-to-end baseline check without network access."""
+
+    prepared = attach_starter_and_lineup_context(
+        _synthetic_statcast_frame(),
+        _synthetic_normalized_game_frame(),
+    )
+    snapshots = build_snapshots(prepared)
+    eligible_snapshots = add_starter_eligibility(snapshots, min_prior_pitches=1)
+    report = evaluate_fold(
+        eligible_snapshots,
+        train_years=(2022,),
+        validation_year=2023,
+        trials=20,
+        dataset_manifest_hash="synthetic:pipeline-smoke",
+    )
+    typer.echo(_pipeline_smoke_summary(report))
 
 
 def load_settings(config: Path) -> Settings:
@@ -60,8 +90,7 @@ def download_games_command(
     output_dir = settings.project_root / "data/normalized/games"
     total_pitch_events = sum(result.pitch_event_count for result in results)
     typer.echo(
-        f"Downloaded {len(results)} game feeds to {output_dir} "
-        f"({total_pitch_events} pitch events)."
+        f"Downloaded {len(results)} game feeds to {output_dir} ({total_pitch_events} pitch events)."
     )
 
 
@@ -211,3 +240,79 @@ def _validation_report_markdown(payload: dict[str, object]) -> str:
         else:
             lines.append(f"- `{key}`: {value}")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _synthetic_statcast_frame() -> pl.DataFrame:
+    rows: list[dict[str, object]] = []
+    for year in (2022, 2023):
+        game_pk = year * 1000 + 1
+        game_start = datetime(year, 4, 1, 18, 0)
+        for index in range(3):
+            pitch_timestamp = game_start + timedelta(minutes=5, seconds=index * 20)
+            rows.append(
+                {
+                    "game_pk": game_pk,
+                    "at_bat_number": index + 1,
+                    "pitch_number": 1,
+                    "inning": 1,
+                    "inning_topbot": "Top",
+                    "pitcher": 501,
+                    "batter": 201 + index,
+                    "stand": "R",
+                    "p_throws": "R",
+                    "balls": 0,
+                    "strikes": 0,
+                    "outs_when_up": index,
+                    "on_1b": None,
+                    "on_2b": None,
+                    "on_3b": None,
+                    "bat_score": 0,
+                    "fld_score": 0,
+                    "post_bat_score": 0,
+                    "pitch_type": "FF",
+                    "relative_zone": "middle_middle",
+                    "description": "hit_into_play",
+                    "events": "field_out",
+                    "pitch_timestamp": pitch_timestamp,
+                    "completed_event_timestamp": pitch_timestamp + timedelta(seconds=5),
+                }
+            )
+    return pl.DataFrame(rows)
+
+
+def _synthetic_normalized_game_frame() -> pl.DataFrame:
+    rows: list[dict[str, object]] = []
+    for year in (2022, 2023):
+        rows.append(
+            {
+                "game_pk": year * 1000 + 1,
+                "game_date": date(year, 4, 1),
+                "game_type": "R",
+                "home_team_id": 119,
+                "away_team_id": 137,
+                "home_starter_id": 501,
+                "away_starter_id": 601,
+                "home_starter_throws": "R",
+                "away_starter_throws": "L",
+                "home_initial_lineup": [101, 102, 103, 104, 105, 106, 107, 108, 109],
+                "away_initial_lineup": [201, 202, 203, 204, 205, 206, 207, 208, 209],
+                "home_initial_lineup_stands": ["R", "L", "R", "L", "R", "L", "R", "L", "R"],
+                "away_initial_lineup_stands": ["R", "R", "R", "L", "R", "L", "R", "L", "R"],
+                "game_start_timestamp": datetime(year, 4, 1, 18, 0),
+                "first_substitution_at_bat": None,
+            }
+        )
+    return pl.DataFrame(rows)
+
+
+def _pipeline_smoke_summary(report: FoldEvaluationReport) -> str:
+    return "\n".join(
+        [
+            "Baseline metric summary",
+            f"training_row_count: {report.training_row_count}",
+            f"validation_row_count: {report.validation_row_count}",
+            f"behavior_top1_accuracy: {report.behavior_top1_accuracy:.3f}",
+            f"transition_negative_log_likelihood: {report.transition_negative_log_likelihood:.3f}",
+            f"simulation_truncation_rate: {report.simulation_truncation_rate:.3f}",
+        ]
+    )
