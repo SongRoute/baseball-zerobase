@@ -14,9 +14,9 @@ from baseball_zerobase.data.snapshots import (
     write_development_dataset,
     write_snapshot_dataset,
 )
-from baseball_zerobase.data.splits import DatasetRole, classify_row, require_dev_role
+from baseball_zerobase.data.splits import DatasetRole, LockedDataError, classify_row, require_dev_role
 from baseball_zerobase.data.statcast import download_statcast_range
-from baseball_zerobase.data.validation import audit_snapshots
+from baseball_zerobase.data.validation import LeakageError, ValidationReport, audit_snapshots
 from baseball_zerobase.paths import require_dev_input
 
 app = typer.Typer(no_args_is_help=True)
@@ -159,24 +159,41 @@ def build_dev_dataset_command(
 
 @app.command("validate-dataset")
 def validate_dataset_command(
-    snapshots_parquet: Path = typer.Option(...),
+    input_path: Path = typer.Option(..., "--input"),
+    report_path: Path = typer.Option(..., "--report"),
     config: Path = typer.Option(Path("configs/base.yaml")),
 ) -> None:
     settings = load_settings(config)
-    snapshots_path = require_dev_input(snapshots_parquet, settings)
-    snapshots = pl.read_parquet(snapshots_path)
-    report = audit_snapshots(snapshots)
-    if report.locked_row_count:
-        locked_roles = {
-            role
-            for role in (
-                DatasetRole.LOCKED_POSTSEASON_2025.value,
-                DatasetRole.LOCKED_REGULAR_2026.value,
-            )
-            if report.dataset_role_counts.get(role, 0)
-        }
-        raise typer.BadParameter(
-            "development validation cannot read locked snapshot roles: "
-            f"{sorted(locked_roles)}"
-        )
-    typer.echo(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    try:
+        dataset_path = require_dev_input(input_path, settings)
+        output_path = require_dev_input(report_path, settings)
+        snapshots = pl.read_parquet(dataset_path)
+        report = audit_snapshots(snapshots)
+    except (LockedDataError, LeakageError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    _write_validation_report(report, output_path)
+    typer.echo(f"Wrote validation report to {output_path}")
+
+
+def _write_validation_report(report: ValidationReport, report_path: Path) -> None:
+    report_path = report_path.resolve()
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = report.to_dict()
+    if report_path.suffix.lower() in {".md", ".markdown"}:
+        report_path.write_text(_validation_report_markdown(payload), encoding="utf-8")
+        return
+    report_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _validation_report_markdown(payload: dict[str, object]) -> str:
+    lines = ["# Validation Report", ""]
+    for key, value in sorted(payload.items()):
+        if isinstance(value, dict):
+            lines.extend([f"## {key}", ""])
+            for nested_key, nested_value in sorted(value.items()):
+                lines.append(f"- `{nested_key}`: {nested_value}")
+            lines.append("")
+        else:
+            lines.append(f"- `{key}`: {value}")
+    return "\n".join(lines).rstrip() + "\n"
