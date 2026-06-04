@@ -174,6 +174,7 @@ def _reject_timestamp_leakage(frame: pl.DataFrame) -> None:
     if missing:
         raise LeakageError(f"missing leakage timestamp columns: {missing}")
 
+    malformed_rows: list[str] = []
     leaky_keys: list[str] = []
     for index, row in enumerate(
         frame.select(["as_of_timestamp", "pitch_timestamp"]).iter_rows(named=True)
@@ -181,10 +182,16 @@ def _reject_timestamp_leakage(frame: pl.DataFrame) -> None:
         as_of_timestamp = _datetime_or_none(row["as_of_timestamp"])
         pitch_timestamp = _datetime_or_none(row["pitch_timestamp"])
         if as_of_timestamp is None or pitch_timestamp is None:
+            malformed_rows.append(str(index))
             continue
         if as_of_timestamp >= pitch_timestamp:
             leaky_keys.append(str(index))
 
+    if malformed_rows:
+        raise LeakageError(
+            "snapshot rows must have non-null parseable as_of_timestamp and pitch_timestamp; "
+            f"malformed row indexes: {_sample(malformed_rows)}"
+        )
     if leaky_keys:
         raise LeakageError(
             "snapshot rows must have as_of_timestamp strictly before pitch_timestamp "
@@ -327,6 +334,9 @@ def _reject_terminal_fields(frame: pl.DataFrame) -> None:
             continue
         if half_inning_ended and terminal_reason is None:
             missing_reason_rows.append(str(index))
+            continue
+        if not half_inning_ended and terminal_reason is not None:
+            invalid_reason_rows.append(str(index))
             continue
         if terminal_reason is not None and terminal_reason not in _TERMINAL_REASON_VALUES:
             invalid_reason_rows.append(str(index))

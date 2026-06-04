@@ -97,6 +97,16 @@ def test_audit_rejects_duplicate_pitch_keys(valid_snapshot_frame: pl.DataFrame) 
             "locked",
         ),
         (
+            "null as of timestamp",
+            lambda frame: frame.with_columns(_replace_row("as_of_timestamp", 0, None)),
+            "timestamp",
+        ),
+        (
+            "null pitch timestamp",
+            lambda frame: frame.with_columns(_replace_row("pitch_timestamp", 0, None)),
+            "timestamp",
+        ),
+        (
             "invalid balls",
             lambda frame: frame.with_columns(_replace_row("balls", 0, 4)),
             "balls",
@@ -161,6 +171,11 @@ def test_audit_rejects_duplicate_pitch_keys(valid_snapshot_frame: pl.DataFrame) 
         (
             "invalid terminal reason",
             lambda frame: frame.with_columns(_replace_row("terminal_reason", 2, "rain_delay")),
+            "terminal_reason",
+        ),
+        (
+            "nonterminal terminal reason",
+            lambda frame: frame.with_columns(_replace_row("terminal_reason", 0, "three_outs")),
             "terminal_reason",
         ),
         (
