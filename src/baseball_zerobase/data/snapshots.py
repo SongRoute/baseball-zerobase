@@ -296,15 +296,20 @@ def write_snapshot_dataset(
     try:
         snapshots.write_parquet(temp_path)
         checksum = sha256_file(temp_path)
-        _install_immutable_parquet(temp_path, output_path, checksum, "snapshot dataset")
-        return write_manifest(
-            output_path,
-            source=source,
-            request=request,
-            row_count=snapshots.height,
-            schema_names=snapshots.columns,
-            sha256=checksum,
-        )
+        installed = _install_immutable_parquet(temp_path, output_path, checksum, "snapshot dataset")
+        try:
+            return write_manifest(
+                output_path,
+                source=source,
+                request=request,
+                row_count=snapshots.height,
+                schema_names=snapshots.columns,
+                sha256=checksum,
+            )
+        except Exception:
+            if installed:
+                output_path.unlink(missing_ok=True)
+            raise
     except Exception:
         if temp_path.exists():
             temp_path.unlink()
@@ -340,15 +345,20 @@ def write_development_dataset(
     try:
         dataset.frame.write_parquet(temp_path)
         checksum = sha256_file(temp_path)
-        _install_immutable_parquet(temp_path, output_path, checksum, "development dataset")
-        return write_manifest(
-            output_path,
-            source=source,
-            request=manifest_request,
-            row_count=dataset.frame.height,
-            schema_names=dataset.frame.columns,
-            sha256=checksum,
-        )
+        installed = _install_immutable_parquet(temp_path, output_path, checksum, "development dataset")
+        try:
+            return write_manifest(
+                output_path,
+                source=source,
+                request=manifest_request,
+                row_count=dataset.frame.height,
+                schema_names=dataset.frame.columns,
+                sha256=checksum,
+            )
+        except Exception:
+            if installed:
+                output_path.unlink(missing_ok=True)
+            raise
     except Exception:
         if temp_path.exists():
             temp_path.unlink()
@@ -364,7 +374,7 @@ def _read_existing_manifest_sha256(path: Path) -> str | None:
     return loaded["sha256"]
 
 
-def _install_immutable_parquet(temp_path: Path, data_path: Path, checksum: str, label: str) -> None:
+def _install_immutable_parquet(temp_path: Path, data_path: Path, checksum: str, label: str) -> bool:
     manifest_path = manifest_path_for(data_path)
     if data_path.exists():
         actual_checksum = sha256_file(data_path)
@@ -373,7 +383,7 @@ def _install_immutable_parquet(temp_path: Path, data_path: Path, checksum: str, 
         if actual_checksum == checksum and (
             existing_manifest_checksum is None or existing_manifest_checksum == checksum
         ):
-            return
+            return False
         if actual_checksum != checksum:
             raise ManifestConflictError(f"{label} already exists with a different checksum: {data_path}")
         raise ManifestConflictError(
@@ -396,13 +406,14 @@ def _install_immutable_parquet(temp_path: Path, data_path: Path, checksum: str, 
         if actual_checksum == checksum and (
             existing_manifest_checksum is None or existing_manifest_checksum == checksum
         ):
-            return
+            return False
         if actual_checksum != checksum:
             raise ManifestConflictError(f"{label} already exists with a different checksum: {data_path}")
         raise ManifestConflictError(
             f"{label} manifest already exists with a different checksum: {manifest_path}"
         )
     temp_path.unlink()
+    return True
 
 
 def _prepared_rows(
@@ -422,7 +433,6 @@ def _prepared_rows(
         game_start = _datetime(row.get("game_start_timestamp") or _EPOCH)
         pitch_timestamp = _datetime(row["pitch_timestamp"])
         completed_timestamp = _datetime(row["completed_event_timestamp"])
-        completed_timestamp_joined = bool(row["timestamp_joined"])
         previous_completed = previous_completed_by_game.get(game_pk)
         if previous_completed is None:
             row["as_of_timestamp"] = game_start
@@ -430,7 +440,7 @@ def _prepared_rows(
             row["as_of_timestamp"], previous_completed_joined = previous_completed
             if not previous_completed_joined:
                 row["timestamp_joined"] = False
-        previous_completed_by_game[game_pk] = (completed_timestamp, completed_timestamp_joined)
+        previous_completed_by_game[game_pk] = (completed_timestamp, bool(row["timestamp_joined"]))
         if row["as_of_timestamp"] >= pitch_timestamp and not bool(row["timestamp_joined"]):
             row["as_of_timestamp"] = pitch_timestamp - timedelta(microseconds=1)
         sortable_rows.append(row)
