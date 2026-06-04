@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -37,3 +38,14 @@ def test_manifest_rejects_overwrite_when_checksum_differs(tmp_path) -> None:
 
     with pytest.raises(ManifestConflictError):
         write_manifest(raw, source="test", request={"start": "2024-04-01"})
+
+
+def test_manifest_rejects_supplied_checksum_that_differs_from_file_bytes(tmp_path) -> None:
+    raw = tmp_path / "sample.bin"
+    raw.write_bytes(b"immutable")
+    wrong_checksum = hashlib.sha256(b"changed").hexdigest()
+
+    with pytest.raises(ManifestConflictError, match="supplied checksum differs"):
+        write_manifest(raw, source="test", request={"start": "2024-04-01"}, sha256=wrong_checksum)
+
+    assert not raw.with_name("sample.bin.manifest.json").exists()

@@ -103,12 +103,21 @@ def _read_manifest_sha256(path: Path) -> str | None:
 def _install_immutable_partition(temp_path: Path, data_path: Path, checksum: str) -> None:
     manifest_path = manifest_path_for(data_path)
     if data_path.exists():
-        existing_checksum = _read_manifest_sha256(manifest_path)
-        if existing_checksum == checksum:
+        actual_checksum = sha256_file(data_path)
+        existing_manifest_checksum = _read_manifest_sha256(manifest_path)
+        if actual_checksum == checksum and (
+            existing_manifest_checksum is None or existing_manifest_checksum == checksum
+        ):
             temp_path.unlink()
             return
         temp_path.unlink()
-        raise ManifestConflictError(f"statcast partition already exists with a different checksum: {data_path}")
+        if actual_checksum != checksum:
+            raise ManifestConflictError(
+                f"statcast partition already exists with a different checksum: {data_path}"
+            )
+        raise ManifestConflictError(
+            f"statcast manifest already exists with a different checksum: {manifest_path}"
+        )
 
     existing_manifest_checksum = _read_manifest_sha256(manifest_path)
     if existing_manifest_checksum is not None and existing_manifest_checksum != checksum:

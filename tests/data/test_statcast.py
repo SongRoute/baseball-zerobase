@@ -1,8 +1,10 @@
+import json
 from datetime import date
 
 import pandas as pd
 import pytest
 
+from baseball_zerobase.data.manifest import ManifestConflictError, sha256_file
 from baseball_zerobase.data.statcast import MissingStatcastColumnsError, download_statcast_range
 
 
@@ -92,6 +94,27 @@ def test_download_statcast_writes_partition_and_manifest(tmp_path, monkeypatch) 
     assert result.data_path == tmp_path / "data/raw/statcast/start=2024-04-01_end=2024-04-01.parquet"
     assert result.data_path.exists()
     assert result.manifest_path.exists()
+
+
+def test_download_statcast_rejects_corrupted_existing_partition_with_matching_manifest(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "baseball_zerobase.data.statcast.pybaseball_statcast",
+        lambda **kwargs: statcast_frame(),
+    )
+    result = download_statcast_range(date(2024, 4, 1), date(2024, 4, 1), tmp_path)
+    manifest_payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    manifest_checksum = manifest_payload["sha256"]
+
+    result.data_path.write_bytes(b"corrupted partition bytes")
+    assert sha256_file(result.data_path) != manifest_checksum
+
+    with pytest.raises(ManifestConflictError, match="partition already exists"):
+        download_statcast_range(date(2024, 4, 1), date(2024, 4, 1), tmp_path)
+
+    assert result.data_path.read_bytes() == b"corrupted partition bytes"
+    assert json.loads(result.manifest_path.read_text(encoding="utf-8"))["sha256"] == manifest_checksum
 
 
 def test_download_statcast_calls_pybaseball_with_iso_dates(tmp_path, monkeypatch) -> None:

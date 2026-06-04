@@ -64,7 +64,10 @@ def write_manifest(
 ) -> RawDataManifest:
     data_path = data_path.resolve()
     manifest_path = manifest_path_for(data_path)
-    checksum = sha256 if sha256 is not None else sha256_file(data_path)
+    actual_checksum = sha256_file(data_path)
+    if sha256 is not None and sha256 != actual_checksum:
+        raise ManifestConflictError(f"supplied checksum differs from file bytes for {data_path}")
+    checksum = actual_checksum
     existing_checksum = _read_existing_sha256(manifest_path)
     if existing_checksum is not None and existing_checksum != checksum:
         raise ManifestConflictError(f"manifest checksum differs for {data_path}")
