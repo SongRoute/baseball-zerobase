@@ -16,3 +16,14 @@ paths:
   data: data
   artifacts: artifacts
   reports: reports/generated
+
+starter:
+  prior_two_season_pitches: 1000
+
+baseline:
+  transition_min_support: 50
+  behavior_min_support: 25
+
+simulation:
+  trials: 2000
+  max_pitches_per_inning: 150
