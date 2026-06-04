@@ -4,10 +4,12 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from typer.testing import CliRunner
 
+import baseball_zerobase.cli as cli
 from baseball_zerobase.data.contracts import OutcomeLabel
 from baseball_zerobase.data.eligibility import add_starter_eligibility
-from baseball_zerobase.data.manifest import sha256_file
+from baseball_zerobase.data.manifest import ManifestConflictError, sha256_file
 from baseball_zerobase.data.snapshots import build_development_dataset, write_development_dataset
 
 
@@ -94,6 +96,75 @@ def test_development_dataset_manifest_records_input_checksums_and_filter_counts(
     assert payload["request"]["filter_counts"] == dataset.filter_counts
 
 
+def test_development_dataset_conflict_leaves_existing_data_and_manifest(
+    tmp_path: Path,
+) -> None:
+    first_dataset = build_development_dataset(_development_filter_frame())
+    second_dataset = build_development_dataset(
+        _development_filter_frame().with_columns(
+            pl.when(pl.col("game_pk") == 1)
+            .then(pl.lit(99))
+            .otherwise(pl.col("game_pk"))
+            .alias("game_pk")
+        )
+    )
+    input_path = tmp_path / "snapshots.parquet"
+    input_path.write_bytes(b"snapshot input")
+    output_path = tmp_path / "dev_dataset.parquet"
+
+    first_manifest = write_development_dataset(
+        first_dataset,
+        output_path,
+        source="test-dev-dataset",
+        request={"role": "dev_regular"},
+        input_paths={"snapshots": input_path},
+    )
+    original_bytes = output_path.read_bytes()
+    original_manifest_payload = json.loads(first_manifest.path.read_text(encoding="utf-8"))
+
+    with pytest.raises(ManifestConflictError):
+        write_development_dataset(
+            second_dataset,
+            output_path,
+            source="test-dev-dataset",
+            request={"role": "dev_regular", "variant": "conflict"},
+            input_paths={"snapshots": input_path},
+        )
+
+    assert output_path.read_bytes() == original_bytes
+    assert json.loads(first_manifest.path.read_text(encoding="utf-8")) == original_manifest_payload
+    assert original_manifest_payload["sha256"] == sha256_file(output_path)
+
+
+def test_cli_build_dev_dataset_honors_explicit_zero_min_prior_pitches(
+    tmp_path: Path,
+) -> None:
+    snapshots_path = tmp_path / "data/processed/snapshots/role=dev_regular/snapshots.parquet"
+    snapshots_path.parent.mkdir(parents=True)
+    _cli_snapshot_frame().write_parquet(snapshots_path)
+    output_path = tmp_path / "data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet"
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "build-dev-dataset",
+            "--snapshots-parquet",
+            str(snapshots_path),
+            "--output-parquet",
+            str(output_path),
+            "--min-prior-pitches",
+            "0",
+            "--config",
+            str(tmp_path / "configs/base.yaml"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert pl.read_parquet(output_path).height == 1
+    payload = json.loads(output_path.with_name(f"{output_path.name}.manifest.json").read_text())
+    assert payload["request"]["min_prior_pitches"] == 0
+
+
 def _starter_pitch_rows(games: list[tuple[int, date, int]]) -> pl.DataFrame:
     rows = [
         {
@@ -106,6 +177,26 @@ def _starter_pitch_rows(games: list[tuple[int, date, int]]) -> pl.DataFrame:
         for _ in range(pitch_count)
     ]
     return pl.DataFrame(rows)
+
+
+def _cli_snapshot_frame() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "game_pk": [1],
+            "game_date": [date(2024, 4, 1)],
+            "game_type": ["R"],
+            "pitcher_id": [501],
+            "is_official_starter_pitch": [True],
+            "lineup_stable": [True],
+            "pitch_type": ["FF"],
+            "relative_zone": ["middle_middle"],
+            "action": ["FF:middle_middle"],
+            "timestamp_joined": [True],
+            "outcome": [OutcomeLabel.BALL.value],
+            "description": ["ball"],
+            "events": [None],
+        }
+    )
 
 
 def _development_filter_frame() -> pl.DataFrame:

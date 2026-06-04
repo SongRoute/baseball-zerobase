@@ -131,7 +131,11 @@ def build_dev_dataset_command(
 
     snapshots = pl.read_parquet(snapshots_path)
     _require_dev_regular_frame(snapshots, str(snapshots_path))
-    eligibility_threshold = min_prior_pitches or settings.starter.prior_two_season_pitches
+    eligibility_threshold = (
+        settings.starter.prior_two_season_pitches
+        if min_prior_pitches is None
+        else min_prior_pitches
+    )
     eligible_snapshots = add_starter_eligibility(
         snapshots,
         min_prior_pitches=eligibility_threshold,

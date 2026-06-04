@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -8,7 +11,13 @@ from typing import Any
 import polars as pl
 
 from baseball_zerobase.data.contracts import OutcomeLabel, RelativeZone
-from baseball_zerobase.data.manifest import RawDataManifest, sha256_file, write_manifest
+from baseball_zerobase.data.manifest import (
+    ManifestConflictError,
+    RawDataManifest,
+    manifest_path_for,
+    sha256_file,
+    write_manifest,
+)
 from baseball_zerobase.data.outcomes import map_outcome
 from baseball_zerobase.data.splits import DatasetRole, classify_row
 from baseball_zerobase.data.zone_mapper import map_relative_zone
@@ -296,7 +305,6 @@ def write_development_dataset(
 ) -> RawDataManifest:
     output_path = output_path.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    dataset.frame.write_parquet(output_path)
     input_checksums = {
         label: sha256_file(path.resolve()) for label, path in sorted(input_paths.items())
     }
@@ -305,13 +313,80 @@ def write_development_dataset(
         "input_checksums": input_checksums,
         "filter_counts": dataset.filter_counts,
     }
-    return write_manifest(
-        output_path,
-        source=source,
-        request=manifest_request,
-        row_count=dataset.frame.height,
-        schema_names=dataset.frame.columns,
-    )
+    with tempfile.NamedTemporaryFile(
+        prefix=f"{output_path.name}.",
+        suffix=".tmp",
+        dir=output_path.parent,
+        delete=False,
+    ) as temp_file:
+        temp_path = Path(temp_file.name)
+
+    try:
+        dataset.frame.write_parquet(temp_path)
+        checksum = sha256_file(temp_path)
+        _install_immutable_parquet(temp_path, output_path, checksum, "development dataset")
+        return write_manifest(
+            output_path,
+            source=source,
+            request=manifest_request,
+            row_count=dataset.frame.height,
+            schema_names=dataset.frame.columns,
+            sha256=checksum,
+        )
+    except Exception:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
+
+
+def _read_existing_manifest_sha256(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict) or not isinstance(loaded.get("sha256"), str):
+        raise ManifestConflictError(f"existing manifest is invalid: {path}")
+    return loaded["sha256"]
+
+
+def _install_immutable_parquet(temp_path: Path, data_path: Path, checksum: str, label: str) -> None:
+    manifest_path = manifest_path_for(data_path)
+    if data_path.exists():
+        actual_checksum = sha256_file(data_path)
+        existing_manifest_checksum = _read_existing_manifest_sha256(manifest_path)
+        temp_path.unlink()
+        if actual_checksum == checksum and (
+            existing_manifest_checksum is None or existing_manifest_checksum == checksum
+        ):
+            return
+        if actual_checksum != checksum:
+            raise ManifestConflictError(f"{label} already exists with a different checksum: {data_path}")
+        raise ManifestConflictError(
+            f"{label} manifest already exists with a different checksum: {manifest_path}"
+        )
+
+    existing_manifest_checksum = _read_existing_manifest_sha256(manifest_path)
+    if existing_manifest_checksum is not None and existing_manifest_checksum != checksum:
+        temp_path.unlink()
+        raise ManifestConflictError(
+            f"{label} manifest already exists with a different checksum: {manifest_path}"
+        )
+
+    try:
+        os.link(temp_path, data_path)
+    except FileExistsError:
+        actual_checksum = sha256_file(data_path)
+        existing_manifest_checksum = _read_existing_manifest_sha256(manifest_path)
+        temp_path.unlink()
+        if actual_checksum == checksum and (
+            existing_manifest_checksum is None or existing_manifest_checksum == checksum
+        ):
+            return
+        if actual_checksum != checksum:
+            raise ManifestConflictError(f"{label} already exists with a different checksum: {data_path}")
+        raise ManifestConflictError(
+            f"{label} manifest already exists with a different checksum: {manifest_path}"
+        )
+    temp_path.unlink()
 
 
 def _prepared_rows(
