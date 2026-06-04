@@ -170,6 +170,8 @@ class EmpiricalTransitionModel:
             p_throws=p_throws,
         )
         atoms = list(distribution)
+        if not atoms:
+            raise ValueError("no valid transition atoms for context")
         weights = list(distribution.values())
         index = int(rng.choice(len(atoms), p=weights))
         return atoms[index]
@@ -583,6 +585,8 @@ def _atom_is_valid_for_context(
 ) -> bool:
     if atom.outs_after < outs:
         return False
+    outs_delta = atom.outs_after - outs
+
     if atom.half_inning_ended:
         if not atom.plate_appearance_ended or atom.outs_after != 3 or atom.terminal_reason is None:
             return False
@@ -592,13 +596,43 @@ def _atom_is_valid_for_context(
     if atom.plate_appearance_ended:
         if atom.balls_after != 0 or atom.strikes_after != 0:
             return False
+        if not _terminal_outcome_is_valid(atom, balls=balls, strikes=strikes, outs_delta=outs_delta):
+            return False
     elif not _non_terminal_count_is_valid(atom, balls=balls, strikes=strikes, outs=outs):
         return False
 
-    before_runners = _runner_count(runners)
-    after_runners = sum(atom.runners_after)
-    batter_added = 1 if atom.plate_appearance_ended else 0
-    return after_runners + atom.runs_scored <= before_runners + batter_added
+    return _runner_state_is_reachable(
+        atom,
+        before_runners=runners,
+        outs_delta=outs_delta,
+    )
+
+
+def _terminal_outcome_is_valid(
+    atom: TransitionAtom,
+    *,
+    balls: int,
+    strikes: int,
+    outs_delta: int,
+) -> bool:
+    if atom.outcome == OutcomeLabel.STRIKEOUT:
+        return strikes == 2 and outs_delta >= 1
+    if atom.outcome == OutcomeLabel.WALK:
+        return balls == 3 and outs_delta == 0
+    if atom.outcome == OutcomeLabel.HBP:
+        return outs_delta == 0
+    if atom.outcome == OutcomeLabel.IN_PLAY_OUT:
+        return outs_delta > 0
+    if atom.outcome in {
+        OutcomeLabel.SINGLE,
+        OutcomeLabel.DOUBLE,
+        OutcomeLabel.TRIPLE,
+        OutcomeLabel.HOME_RUN,
+    }:
+        return outs_delta == 0
+    if atom.outcome == OutcomeLabel.REACH_OTHER:
+        return True
+    return True
 
 
 def _non_terminal_count_is_valid(
@@ -625,6 +659,124 @@ def _non_terminal_count_is_valid(
 
 def _runner_count(runners: int) -> int:
     return int(bool(runners & 1)) + int(bool(runners & 2)) + int(bool(runners & 4))
+
+
+def _runner_state_is_reachable(
+    atom: TransitionAtom,
+    *,
+    before_runners: int,
+    outs_delta: int,
+) -> bool:
+    before_count = _runner_count(before_runners)
+    after_bits = _runner_bits_from_tuple(atom.runners_after)
+    after_count = _runner_count(after_bits)
+    batter_added = 1 if atom.plate_appearance_ended else 0
+    if after_count + atom.runs_scored + outs_delta != before_count + batter_added:
+        return False
+
+    if atom.outcome == OutcomeLabel.HOME_RUN:
+        return after_bits == 0 and atom.runs_scored == before_count + 1
+
+    if not atom.plate_appearance_ended:
+        return after_bits == before_runners and atom.runs_scored == 0 and outs_delta == 0
+
+    if atom.outcome == OutcomeLabel.WALK or atom.outcome == OutcomeLabel.HBP:
+        return _forced_walk_state(before_runners) == after_bits
+
+    if atom.outcome in {OutcomeLabel.SINGLE, OutcomeLabel.DOUBLE, OutcomeLabel.TRIPLE}:
+        return _hit_runner_state_is_reachable(
+            before_runners=before_runners,
+            after_bits=after_bits,
+            hit_bases=_hit_bases(atom.outcome),
+        )
+
+    if atom.outcome == OutcomeLabel.REACH_OTHER and outs_delta == 0:
+        return _reach_other_safe_state_is_reachable(
+            before_runners=before_runners,
+            after_bits=after_bits,
+        )
+
+    if atom.outcome in {OutcomeLabel.IN_PLAY_OUT, OutcomeLabel.STRIKEOUT}:
+        return _remaining_runners_do_not_move_backward(before_runners, after_bits)
+
+    return _remaining_runners_do_not_move_backward(before_runners, after_bits)
+
+
+def _runner_bits_from_tuple(runners_after: tuple[bool, bool, bool]) -> int:
+    return (
+        int(runners_after[0])
+        | (int(runners_after[1]) << 1)
+        | (int(runners_after[2]) << 2)
+    )
+
+
+def _forced_walk_state(before_runners: int) -> int:
+    after = before_runners | 1
+    if before_runners & 1:
+        after |= 2
+    if before_runners & 1 and before_runners & 2:
+        after |= 4
+    return after & 7
+
+
+def _hit_bases(outcome: OutcomeLabel) -> int:
+    if outcome == OutcomeLabel.SINGLE:
+        return 1
+    if outcome == OutcomeLabel.DOUBLE:
+        return 2
+    if outcome == OutcomeLabel.TRIPLE:
+        return 3
+    raise ValueError(f"{outcome} is not a hit outcome")
+
+
+def _hit_runner_state_is_reachable(
+    *,
+    before_runners: int,
+    after_bits: int,
+    hit_bases: int,
+) -> bool:
+    possible: set[int] = set()
+
+    def advance_existing(base_index: int, current_bits: int) -> None:
+        if base_index > 3:
+            place_batter(current_bits)
+            return
+        base_bit = 1 << (base_index - 1)
+        if not before_runners & base_bit:
+            advance_existing(base_index + 1, current_bits)
+            return
+
+        for destination in range(base_index, 5):
+            if destination >= 4:
+                advance_existing(base_index + 1, current_bits)
+                continue
+            destination_bit = 1 << (destination - 1)
+            if current_bits & destination_bit:
+                continue
+            advance_existing(base_index + 1, current_bits | destination_bit)
+
+    def place_batter(current_bits: int) -> None:
+        batter_bit = 1 << (hit_bases - 1)
+        if current_bits & batter_bit:
+            return
+        possible.add(current_bits | batter_bit)
+
+    advance_existing(1, 0)
+    return after_bits in possible
+
+
+def _reach_other_safe_state_is_reachable(*, before_runners: int, after_bits: int) -> bool:
+    if not after_bits & 1:
+        return False
+    return _remaining_runners_do_not_move_backward(before_runners, after_bits & ~1)
+
+
+def _remaining_runners_do_not_move_backward(before_runners: int, after_bits: int) -> bool:
+    before_bases = [base for base in range(1, 4) if before_runners & (1 << (base - 1))]
+    after_bases = [base for base in range(1, 4) if after_bits & (1 << (base - 1))]
+    if len(after_bases) > len(before_bases):
+        return False
+    return all(after_base >= before_base for before_base, after_base in zip(before_bases, after_bases))
 
 
 def _row_weight(row: Mapping[str, Any]) -> int:

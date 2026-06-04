@@ -274,7 +274,7 @@ def test_transition_backoff_filters_atoms_that_violate_current_context() -> None
             _row("SL", "middle_middle", 3, 2, 2, 0, "R", "R", _strikeout_atom()),
         ]
     )
-    model = EmpiricalTransitionModel(min_support=2).fit(
+    model = EmpiricalTransitionModel(min_support=1).fit(
         frame,
         training_manifest_hash="sha256:transitions",
     )
@@ -298,6 +298,217 @@ def test_transition_backoff_filters_atoms_that_violate_current_context() -> None
 def test_transition_model_requires_training_manifest_hash() -> None:
     with pytest.raises(ValueError, match="training_manifest_hash is required"):
         EmpiricalTransitionModel().fit(_transition_frame(), training_manifest_hash="")
+
+
+def test_transition_backoff_rejects_terminal_atoms_from_impossible_counts() -> None:
+    frame = pl.DataFrame(
+        [
+            _row(
+                "FF",
+                "middle_middle",
+                0,
+                2,
+                0,
+                0,
+                "R",
+                "R",
+                _strikeout_atom(outs_after=1, half_inning_ended=False),
+            ),
+            _row(
+                "FF",
+                "middle_middle",
+                0,
+                2,
+                0,
+                0,
+                "R",
+                "R",
+                _strikeout_atom(outs_after=1, half_inning_ended=False),
+            ),
+        ]
+    )
+    model = EmpiricalTransitionModel(min_support=2).fit(
+        frame,
+        training_manifest_hash="sha256:transitions",
+    )
+
+    assert (
+        model.predict_distribution(
+            pitch_type="FF",
+            relative_zone="middle_middle",
+            balls=0,
+            strikes=0,
+            outs=0,
+            runners=0,
+            stand="R",
+            p_throws="R",
+        )
+        == {}
+    )
+    assert (
+        model.predict_distribution(
+            pitch_type="FF",
+            relative_zone="middle_middle",
+            balls=0,
+            strikes=2,
+            outs=1,
+            runners=0,
+            stand="R",
+            p_throws="R",
+        )
+        == {}
+    )
+
+
+def test_transition_backoff_rejects_runner_teleport_or_disappearance() -> None:
+    frame = pl.DataFrame(
+        [
+            _row("SI", "middle_middle", 0, 0, 0, 0, "R", "R", _single_no_advance_atom()),
+            _row("SI", "middle_middle", 0, 0, 0, 0, "R", "R", _single_no_advance_atom()),
+        ]
+    )
+    model = EmpiricalTransitionModel(min_support=2).fit(
+        frame,
+        training_manifest_hash="sha256:transitions",
+    )
+
+    assert (
+        model.predict_distribution(
+            pitch_type="SI",
+            relative_zone="middle_middle",
+            balls=0,
+            strikes=0,
+            outs=0,
+            runners=4,
+            stand="R",
+            p_throws="R",
+        )
+        == {}
+    )
+
+
+def test_sample_raises_clear_error_when_no_valid_transition_exists() -> None:
+    frame = pl.DataFrame(
+        [
+            _row(
+                "FF",
+                "middle_middle",
+                0,
+                2,
+                0,
+                0,
+                "R",
+                "R",
+                _strikeout_atom(outs_after=1, half_inning_ended=False),
+            ),
+        ]
+    )
+    model = EmpiricalTransitionModel(min_support=1).fit(
+        frame,
+        training_manifest_hash="sha256:transitions",
+    )
+
+    with pytest.raises(ValueError, match="no valid transition atoms"):
+        model.sample(
+            np.random.default_rng(42),
+            pitch_type="FF",
+            relative_zone="middle_middle",
+            balls=0,
+            strikes=0,
+            outs=0,
+            runners=0,
+            stand="R",
+            p_throws="R",
+        )
+
+
+def test_transition_allows_safe_single_when_existing_runner_holds_base() -> None:
+    atom = _single_runner_holds_atom()
+    frame = pl.DataFrame(
+        [_row("SI", "middle_middle", 0, 0, 0, 2, "R", "R", atom)]
+    )
+    model = EmpiricalTransitionModel(min_support=1).fit(
+        frame,
+        training_manifest_hash="sha256:transitions",
+    )
+
+    distribution = model.predict_distribution(
+        pitch_type="SI",
+        relative_zone="middle_middle",
+        balls=0,
+        strikes=0,
+        outs=0,
+        runners=2,
+        stand="R",
+        p_throws="R",
+    )
+    assert len(distribution) == 1
+    assert distribution[atom] == 1.0
+
+
+def test_transition_allows_strikeout_double_play_and_fielders_choice() -> None:
+    strikeout_dp = _strikeout_atom(outs_after=2, half_inning_ended=False)
+    fielders_choice = _fielders_choice_atom()
+    frame = pl.DataFrame(
+        [
+            _row("FF", "middle_middle", 0, 2, 0, 1, "R", "R", strikeout_dp),
+            _row("SI", "middle_middle", 0, 0, 0, 1, "R", "R", fielders_choice),
+        ]
+    )
+    model = EmpiricalTransitionModel(min_support=1).fit(
+        frame,
+        training_manifest_hash="sha256:transitions",
+    )
+
+    strikeout_distribution = model.predict_distribution(
+        pitch_type="FF",
+        relative_zone="middle_middle",
+        balls=0,
+        strikes=2,
+        outs=0,
+        runners=1,
+        stand="R",
+        p_throws="R",
+    )
+    fielders_choice_distribution = model.predict_distribution(
+        pitch_type="SI",
+        relative_zone="middle_middle",
+        balls=0,
+        strikes=0,
+        outs=0,
+        runners=1,
+        stand="R",
+        p_throws="R",
+    )
+    assert len(strikeout_distribution) == 1
+    assert strikeout_distribution[strikeout_dp] == 1.0
+    assert len(fielders_choice_distribution) == 1
+    assert fielders_choice_distribution[fielders_choice] == 1.0
+
+
+def test_transition_allows_reach_other_without_out_on_empty_bases() -> None:
+    atom = _reach_error_atom()
+    frame = pl.DataFrame(
+        [_row("FF", "middle_middle", 0, 0, 0, 0, "R", "R", atom)]
+    )
+    model = EmpiricalTransitionModel(min_support=1).fit(
+        frame,
+        training_manifest_hash="sha256:transitions",
+    )
+
+    distribution = model.predict_distribution(
+        pitch_type="FF",
+        relative_zone="middle_middle",
+        balls=0,
+        strikes=0,
+        outs=0,
+        runners=0,
+        stand="R",
+        p_throws="R",
+    )
+
+    assert len(distribution) == 1
+    assert distribution[atom] == 1.0
 
 
 def _transition_frame() -> pl.DataFrame:
@@ -331,6 +542,7 @@ def _transition_frame() -> pl.DataFrame:
         _row("SL", "low_away", 2, 1, 1, 0, "L", "L", _in_play_out_atom(outs_after=1)),
         _row("CH", "chase_low", 3, 2, 0, 0, "R", "R", _walk_atom()),
         _row("CH", "chase_low", 1, 0, 0, 0, "L", "L", _in_play_out_atom(outs_after=1)),
+        _row("CH", "chase_low", 0, 0, 1, 0, "L", "R", _in_play_out_atom(outs_after=1)),
         _row("SI", "middle_away", 0, 1, 2, 3, "L", "R", _single_atom()),
         _row("SI", "middle_away", 0, 1, 2, 3, "L", "R", _single_atom()),
     ]
@@ -424,17 +636,73 @@ def _walk_atom() -> TransitionAtom:
     )
 
 
-def _strikeout_atom() -> TransitionAtom:
+def _strikeout_atom(*, outs_after: int = 3, half_inning_ended: bool = True) -> TransitionAtom:
     return TransitionAtom(
         outcome=OutcomeLabel.STRIKEOUT,
         balls_after=0,
         strikes_after=0,
-        outs_after=3,
+        outs_after=outs_after,
         runners_after=(False, False, False),
         runs_scored=0,
         plate_appearance_ended=True,
-        half_inning_ended=True,
-        terminal_reason="three_outs",
+        half_inning_ended=half_inning_ended,
+        terminal_reason="three_outs" if half_inning_ended else None,
+    )
+
+
+def _single_no_advance_atom() -> TransitionAtom:
+    return TransitionAtom(
+        outcome=OutcomeLabel.SINGLE,
+        balls_after=0,
+        strikes_after=0,
+        outs_after=0,
+        runners_after=(True, False, False),
+        runs_scored=0,
+        plate_appearance_ended=True,
+        half_inning_ended=False,
+        terminal_reason=None,
+    )
+
+
+def _single_runner_holds_atom() -> TransitionAtom:
+    return TransitionAtom(
+        outcome=OutcomeLabel.SINGLE,
+        balls_after=0,
+        strikes_after=0,
+        outs_after=0,
+        runners_after=(True, True, False),
+        runs_scored=0,
+        plate_appearance_ended=True,
+        half_inning_ended=False,
+        terminal_reason=None,
+    )
+
+
+def _fielders_choice_atom() -> TransitionAtom:
+    return TransitionAtom(
+        outcome=OutcomeLabel.REACH_OTHER,
+        balls_after=0,
+        strikes_after=0,
+        outs_after=1,
+        runners_after=(True, False, False),
+        runs_scored=0,
+        plate_appearance_ended=True,
+        half_inning_ended=False,
+        terminal_reason=None,
+    )
+
+
+def _reach_error_atom() -> TransitionAtom:
+    return TransitionAtom(
+        outcome=OutcomeLabel.REACH_OTHER,
+        balls_after=0,
+        strikes_after=0,
+        outs_after=0,
+        runners_after=(True, False, False),
+        runs_scored=0,
+        plate_appearance_ended=True,
+        half_inning_ended=False,
+        terminal_reason=None,
     )
 
 
