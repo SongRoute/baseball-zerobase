@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -102,6 +104,37 @@ def _ensure_existing_manifest_matches(
     return existing
 
 
+def _install_manifest_payload(
+    manifest_path: Path, payload: str, candidate: RawDataManifest
+) -> RawDataManifest:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=manifest_path.parent,
+            encoding="utf-8",
+            prefix=f".{manifest_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(payload)
+            temp_path = Path(handle.name)
+
+        os.link(temp_path, manifest_path)
+        return candidate
+    except FileExistsError:
+        existing_payload = _read_existing_manifest_payload(manifest_path)
+        if existing_payload is None:
+            raise ManifestConflictError(f"manifest appeared but could not be read: {manifest_path}")
+        existing_manifest = _manifest_from_payload(
+            existing_payload, data_path=candidate.data_path, manifest_path=manifest_path
+        )
+        return _ensure_existing_manifest_matches(existing_manifest, candidate)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
+
 def write_manifest(
     data_path: Path,
     *,
@@ -130,6 +163,7 @@ def write_manifest(
         data_path=data_path,
         path=manifest_path,
     )
+    payload = json.dumps(manifest.to_json_dict(), indent=2, sort_keys=True) + "\n"
     existing_payload = _read_existing_manifest_payload(manifest_path)
     if existing_payload is not None:
         existing_manifest = _manifest_from_payload(
@@ -137,8 +171,4 @@ def write_manifest(
         )
         return _ensure_existing_manifest_matches(existing_manifest, manifest)
 
-    manifest_path.write_text(
-        json.dumps(manifest.to_json_dict(), indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return manifest
+    return _install_manifest_payload(manifest_path, payload, manifest)
