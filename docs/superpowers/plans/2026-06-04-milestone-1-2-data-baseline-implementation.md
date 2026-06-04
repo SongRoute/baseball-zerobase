@@ -47,12 +47,16 @@ This plan deliberately does not implement:
 - Zone frequency and reachability never remove a zone from future recommendation candidates.
 - Main-evaluation snapshots are marked unstable after the first lineup substitution.
 - All as-of features must have timestamps strictly before the target pitch.
+- User-facing English Markdown documents must have Korean review counterparts. At minimum,
+  maintain `README.md` and `README.ko.md` together; generated reports must include a Korean
+  summary.
 
 ## Planned File Structure
 
 ```text
 pyproject.toml
 README.md
+README.ko.md
 configs/
   base.yaml
 data/
@@ -126,11 +130,13 @@ tests/
 **Files:**
 - Create: `pyproject.toml`
 - Create: `README.md`
+- Create: `README.ko.md`
 - Create: `configs/base.yaml`
 - Create: `scripts/check.sh`
 - Create: `src/baseball_zerobase/__init__.py`
 - Create: `src/baseball_zerobase/cli.py`
 - Create: `tests/test_cli_smoke.py`
+- Create: `tests/test_docs_language.py`
 - Create: `data/.gitignore`
 - Create: `artifacts/.gitignore`
 - Create: `reports/generated/.gitignore`
@@ -150,9 +156,20 @@ def test_cli_help_lists_pipeline_commands() -> None:
     assert "version" in result.stdout
 ```
 
+```python
+# tests/test_docs_language.py
+from pathlib import Path
+
+
+def test_korean_readme_exists_for_user_review() -> None:
+    readme_ko = Path("README.ko.md")
+    assert readme_ko.exists()
+    assert "클린룸" in readme_ko.read_text(encoding="utf-8")
+```
+
 - [ ] **Step 2: Run the smoke test and verify it fails**
 
-Run: `uv run pytest tests/test_cli_smoke.py -q`
+Run: `uv run pytest tests/test_cli_smoke.py tests/test_docs_language.py -q`
 
 Expected: FAIL because the new package and CLI do not exist.
 
@@ -229,13 +246,17 @@ Create `scripts/check.sh` to run Ruff, Pyright, and pytest. Do not modify the al
 !.gitignore
 ```
 
+Create `README.md` in English and `README.ko.md` as its Korean review translation. Both files
+must state that this is a clean-room rewrite, the project is restricted to MLB starting pitchers,
+and Milestone 1-2 builds only leakage-safe data foundations and empirical baselines.
+
 - [ ] **Step 4: Install and verify the scaffold**
 
 Run:
 
 ```bash
 uv sync
-uv run pytest tests/test_cli_smoke.py -q
+uv run pytest tests/test_cli_smoke.py tests/test_docs_language.py -q
 uv run ruff check .
 uv run pyright src tests
 ```
@@ -245,9 +266,10 @@ Expected: all commands PASS.
 - [ ] **Step 5: Commit the scaffold**
 
 ```bash
-git add pyproject.toml README.md configs/base.yaml scripts/check.sh \
+git add pyproject.toml README.md README.ko.md configs/base.yaml scripts/check.sh \
   src/baseball_zerobase/__init__.py src/baseball_zerobase/cli.py \
-  tests/test_cli_smoke.py data/.gitignore artifacts/.gitignore reports/generated/.gitignore uv.lock
+  tests/test_cli_smoke.py tests/test_docs_language.py \
+  data/.gitignore artifacts/.gitignore reports/generated/.gitignore uv.lock
 git commit -m "chore: scaffold clean-room data baseline project"
 ```
 
@@ -1381,6 +1403,7 @@ Metrics must include:
 - evaluate only on the validation year
 - start simulations from observed half-inning starting states
 - write one JSON report per fold and a Markdown summary
+- include a Korean summary section in the Markdown report so the user can review conclusions
 - include dataset manifest hash and code version
 
 Add the complete `evaluate-rolling --dataset PATH --output-dir PATH` command.
@@ -1409,6 +1432,7 @@ git commit -m "feat: add rolling baseline evaluation"
 - Create: `tests/test_end_to_end_pipeline.py`
 - Modify: `src/baseball_zerobase/cli.py`
 - Modify: `README.md`
+- Modify: `README.ko.md`
 - Modify: `scripts/check.sh`
 
 - [ ] **Step 1: Write the failing end-to-end fixture test**
@@ -1447,6 +1471,9 @@ Make public function signatures consistent with the end-to-end test. Update READ
 - warning that full-season downloads are long-running and are never part of automated tests
 - warning that locked tests must not be run during development
 
+Update `README.ko.md` with the same user-facing content in Korean, including the clean-room
+constraint, split warnings, command sequence, and locked-test warning.
+
 Add a top-level `pipeline-smoke` CLI command that uses test-size local inputs only and never downloads network data.
 
 Update `scripts/check.sh` to run:
@@ -1477,7 +1504,7 @@ Expected:
 - [ ] **Step 5: Commit the connected pipeline**
 
 ```bash
-git add README.md scripts/check.sh src/baseball_zerobase/cli.py \
+git add README.md README.ko.md scripts/check.sh src/baseball_zerobase/cli.py \
   tests/test_end_to_end_pipeline.py tests/conftest.py
 git commit -m "feat: connect data and baseline pipeline"
 ```
@@ -1493,6 +1520,7 @@ After all tasks are complete:
 5. Build snapshots for that day and run `validate-dataset`.
 6. Confirm that no path under `data/locked/` was read by any development command.
 7. Confirm that no code, model weight, or processed data from `/Users/song/Projects/baseball` was imported or copied.
-8. Record the exact commands and generated report paths in the implementation completion summary.
+8. Confirm that user-facing English Markdown changes have Korean counterparts, especially `README.ko.md`.
+9. Record the exact commands and generated report paths in the implementation completion summary.
 
 The next implementation plan begins only after the rolling baseline reports demonstrate that the data contracts, state transitions, and simulator are trustworthy enough to compare against personalized models.
