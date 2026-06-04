@@ -131,6 +131,23 @@ def test_download_game_feed_writes_raw_manifest_and_normalized_outputs(
     assert pitch_manifest["schema_names"]
 
 
+def test_download_game_feed_rejects_mismatched_downloaded_game_pk_before_writes(
+    tmp_path: Path,
+    fixture_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = load_minimal_feed(fixture_dir)
+    feed["gamePk"] = 99999
+    monkeypatch.setattr(game_feed_module, "fetch_game_feed", lambda game_pk: feed)
+
+    with pytest.raises(ValueError, match="game_pk mismatch"):
+        game_feed_module.download_game_feed(12345, tmp_path)
+
+    assert not (tmp_path / "data/raw/game_feeds/12345.json").exists()
+    assert not (tmp_path / "data/normalized/games/game_pk=12345/game.parquet").exists()
+    assert not (tmp_path / "data/normalized/games/game_pk=12345/pitch_events.parquet").exists()
+
+
 def test_download_game_feed_rejects_changed_existing_normalized_output(
     tmp_path: Path,
     fixture_dir: Path,

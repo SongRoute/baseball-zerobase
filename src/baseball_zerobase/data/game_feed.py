@@ -344,6 +344,15 @@ def normalize_pitch_events(feed: JsonObject) -> tuple[NormalizedPitchEvent, ...]
     return tuple(events)
 
 
+def _checked_download_game_pk(requested_game_pk: int, normalized_game: NormalizedGame) -> int:
+    if normalized_game.game_pk != requested_game_pk:
+        raise ValueError(
+            "downloaded game feed game_pk mismatch: "
+            f"requested {requested_game_pk}, received {normalized_game.game_pk}"
+        )
+    return normalized_game.game_pk
+
+
 @retry(
     retry=retry_if_exception_type(httpx.HTTPError),
     wait=wait_exponential(multiplier=0.5, max=8),
@@ -533,18 +542,19 @@ def download_game_feed(
 ) -> GameFeedDownloadResult:
     feed = fetch_game_feed(game_pk, client) if client is not None else fetch_game_feed(game_pk)
     normalized_game = normalize_game_feed(feed)
+    checked_game_pk = _checked_download_game_pk(game_pk, normalized_game)
     pitch_events = normalize_pitch_events(feed)
 
-    raw_path, raw_manifest_path = _write_raw_game_feed(feed, game_pk, project_root)
+    raw_path, raw_manifest_path = _write_raw_game_feed(feed, checked_game_pk, project_root)
     raw_sha256 = sha256_file(raw_path)
-    normalized_dir = (project_root / "data/normalized/games" / f"game_pk={game_pk}").resolve()
+    normalized_dir = (project_root / "data/normalized/games" / f"game_pk={checked_game_pk}").resolve()
     normalized_game_path = normalized_dir / "game.parquet"
     normalized_pitch_events_path = normalized_dir / "pitch_events.parquet"
     _write_normalized_game(normalized_game, normalized_game_path, raw_sha256=raw_sha256)
     _write_normalized_pitch_events(
         pitch_events,
         normalized_pitch_events_path,
-        game_pk=game_pk,
+        game_pk=checked_game_pk,
         raw_sha256=raw_sha256,
     )
 
