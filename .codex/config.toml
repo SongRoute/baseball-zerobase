@@ -1,0 +1,19 @@
+# baseball-zerobase 프로젝트 Codex 설정
+# 개인 전역 설정(~/.codex/config.toml)을 이 프로젝트에서 덮어쓰는 레이어.
+
+# --- 서브에이전트 동시성 ---
+[agents]
+max_threads = 6        # 동시 오픈 에이전트 스레드 (기본 6)
+max_depth = 1          # 직접 자식만 허용, 더 깊은 중첩 방지 (기본 1, 유지 권장)
+# job_max_runtime_seconds = 1800   # spawn_agents_on_csv 워커 기본 타임아웃(초). 필요 시 주석 해제.
+
+# --- 프로젝트 지침 로드 ---
+# AGENTS.md 합산이 커지면 한도를 올린다. 현재 문서 합 ~16KB라 기본(32KiB)으로 충분.
+# project_doc_max_bytes = 65536
+
+# --- Hooks (실험적) ---
+# Codex 네이티브 hooks는 아직 Bash 도구만 가로채고 실험 단계라,
+# 자동 검증은 git pre-commit + scripts/check.sh로 처리(아래 hooks.json은 가벼운 알림용만).
+# 활성화하려면 주석 해제:
+# [features]
+# codex_hooks = true

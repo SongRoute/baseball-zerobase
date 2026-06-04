@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+# uv
+# (pyproject.toml, uv.lock 은 추적함 — 아래 제외 안 함)
+# 데이터 (raw·전처리본 모두 제외, parquet 무거움)
+data/raw/
+data/processed/
+# 산출물 (모델 가중치 등)
+*.parquet
+*.pt
+*.pkl
+# 검증 리포트는 추적 (results/*.md 는 제외 안 함)
+# macOS
+.DS_Store

@@ -1,0 +1,16 @@
+{
+  "_comment": "실험적. config.toml에서 [features] codex_hooks=true 켜야 작동. 무거운 검증은 scripts/check.sh가 담당하고, 여기선 가벼운 알림만.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Codex 작업 턴 종료\" with title \"baseball-zerobase\"' || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
