@@ -17,6 +17,7 @@ from baseball_zerobase.data.snapshots import (
 from baseball_zerobase.data.splits import DatasetRole, LockedDataError, classify_row, require_dev_role
 from baseball_zerobase.data.statcast import download_statcast_range
 from baseball_zerobase.data.validation import LeakageError, ValidationReport, audit_snapshots
+from baseball_zerobase.evaluation.rolling import evaluate_rolling
 from baseball_zerobase.paths import require_dev_input
 
 app = typer.Typer(no_args_is_help=True)
@@ -174,6 +175,19 @@ def validate_dataset_command(
 
     _write_validation_report(report, output_path)
     typer.echo(f"Wrote validation report to {output_path}")
+
+
+@app.command("evaluate-rolling")
+def evaluate_rolling_command(
+    dataset: Path = typer.Option(..., "--dataset"),
+    output_dir: Path = typer.Option(..., "--output-dir"),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    dataset_path = require_dev_input(dataset, settings)
+    report_dir = require_dev_input(output_dir, settings)
+    summary = evaluate_rolling(dataset_path, report_dir)
+    typer.echo(f"Wrote {len(summary.fold_reports)} rolling fold reports to {summary.output_dir}")
 
 
 def _write_validation_report(report: ValidationReport, report_path: Path) -> None:
