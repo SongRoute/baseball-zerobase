@@ -69,14 +69,7 @@ def test_evaluate_rolling_rejects_locked_dataset_path(tmp_path) -> None:
 
 def test_evaluate_rolling_infers_nearest_project_data_root_for_locked_path(tmp_path) -> None:
     dataset_path = (
-        tmp_path
-        / "outer"
-        / "data"
-        / "work"
-        / "project"
-        / "data"
-        / "locked"
-        / "dev_dataset.parquet"
+        tmp_path / "outer" / "data" / "work" / "project" / "data" / "locked" / "dev_dataset.parquet"
     )
     dataset_path.parent.mkdir(parents=True)
     _fixture_frame().write_parquet(dataset_path)

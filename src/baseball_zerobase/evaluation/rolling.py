@@ -113,7 +113,9 @@ def evaluate_rolling(
         _write_fold_report(report, report_dir / _fold_report_name(report))
 
     markdown_path = report_dir / "rolling_summary.md"
-    markdown_path.write_text(_markdown_summary(reports, dataset_path, dataset_manifest_hash), encoding="utf-8")
+    markdown_path.write_text(
+        _markdown_summary(reports, dataset_path, dataset_manifest_hash), encoding="utf-8"
+    )
     return RollingEvaluationSummary(
         dataset_path=dataset_path,
         output_dir=report_dir,
@@ -286,7 +288,9 @@ def _simulate_validation_innings(
     return predicted_runs, actual_runs, truncated_trials, simulated_trials
 
 
-def _half_inning_groups(rows: Sequence[Mapping[str, Any]]) -> dict[tuple[object, ...], list[Mapping[str, Any]]]:
+def _half_inning_groups(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[tuple[object, ...], list[Mapping[str, Any]]]:
     groups: dict[tuple[object, ...], list[Mapping[str, Any]]] = defaultdict(list)
     for row in rows:
         key = (

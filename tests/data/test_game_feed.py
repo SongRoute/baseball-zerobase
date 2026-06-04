@@ -106,7 +106,9 @@ def test_download_game_feed_writes_raw_manifest_and_normalized_outputs(
     assert result.raw_path == tmp_path / "data/raw/game_feeds/12345.json"
     assert result.raw_path.exists()
     assert result.raw_manifest_path.exists()
-    assert result.normalized_game_path == tmp_path / "data/normalized/games/game_pk=12345/game.parquet"
+    assert (
+        result.normalized_game_path == tmp_path / "data/normalized/games/game_pk=12345/game.parquet"
+    )
     assert result.normalized_game_path.exists()
     assert result.normalized_pitch_events_path.exists()
     assert result.pitch_event_count == 4
@@ -173,7 +175,9 @@ def test_cli_download_games_uses_game_pk_parquet(
     parquet_path.write_bytes(b"placeholder")
     captured: dict[str, Path] = {}
 
-    def fake_download_games_from_parquet(game_pks_parquet: Path, project_root: Path) -> list[object]:
+    def fake_download_games_from_parquet(
+        game_pks_parquet: Path, project_root: Path
+    ) -> list[object]:
         captured["game_pks_parquet"] = game_pks_parquet
         captured["project_root"] = project_root
         return [SimpleNamespace(pitch_event_count=2), SimpleNamespace(pitch_event_count=3)]

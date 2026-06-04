@@ -244,16 +244,19 @@ def test_transition_model_rejects_invalid_rows_instead_of_fitting_impossible_ato
         training_manifest_hash="sha256:transitions",
     )
 
-    assert model.support(
-        pitch_type="FF",
-        relative_zone="middle_middle",
-        balls=0,
-        strikes=0,
-        outs=0,
-        runners=0,
-        stand="R",
-        p_throws="R",
-    ) == 1
+    assert (
+        model.support(
+            pitch_type="FF",
+            relative_zone="middle_middle",
+            balls=0,
+            strikes=0,
+            outs=0,
+            runners=0,
+            stand="R",
+            p_throws="R",
+        )
+        == 1
+    )
 
 
 def test_transition_model_rejects_raw_statcast_zone_fallback() -> None:
@@ -424,9 +427,7 @@ def test_sample_raises_clear_error_when_no_valid_transition_exists() -> None:
 
 def test_transition_allows_safe_single_when_existing_runner_holds_base() -> None:
     atom = _single_runner_holds_atom()
-    frame = pl.DataFrame(
-        [_row("SI", "middle_middle", 0, 0, 0, 2, "R", "R", atom)]
-    )
+    frame = pl.DataFrame([_row("SI", "middle_middle", 0, 0, 0, 2, "R", "R", atom)])
     model = EmpiricalTransitionModel(min_support=1).fit(
         frame,
         training_manifest_hash="sha256:transitions",
@@ -488,9 +489,7 @@ def test_transition_allows_strikeout_double_play_and_fielders_choice() -> None:
 
 def test_transition_allows_reach_other_without_out_on_empty_bases() -> None:
     atom = _reach_error_atom()
-    frame = pl.DataFrame(
-        [_row("FF", "middle_middle", 0, 0, 0, 0, "R", "R", atom)]
-    )
+    frame = pl.DataFrame([_row("FF", "middle_middle", 0, 0, 0, 0, "R", "R", atom)])
     model = EmpiricalTransitionModel(min_support=1).fit(
         frame,
         training_manifest_hash="sha256:transitions",
@@ -538,7 +537,17 @@ def _transition_frame() -> pl.DataFrame:
             "R",
             _in_play_out_atom(outs_after=1),
         ),
-        _row("SL", "low_away", 2, 1, 0, 0, "R", "R", _called_strike_atom(balls_after=2, strikes_after=2)),
+        _row(
+            "SL",
+            "low_away",
+            2,
+            1,
+            0,
+            0,
+            "R",
+            "R",
+            _called_strike_atom(balls_after=2, strikes_after=2),
+        ),
         _row("SL", "low_away", 2, 1, 1, 0, "L", "L", _in_play_out_atom(outs_after=1)),
         _row("CH", "chase_low", 3, 2, 0, 0, "R", "R", _walk_atom()),
         _row("CH", "chase_low", 1, 0, 0, 0, "L", "L", _in_play_out_atom(outs_after=1)),

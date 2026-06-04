@@ -89,7 +89,9 @@ def test_behavior_model_serializes_counts_settings_and_manifest_hash() -> None:
     assert payload["actions"] == [["FF", "middle_middle"], ["SL", "low_away"]]
     assert payload["counts"]["global"]
     assert restored.training_manifest_hash == "sha256:dev"
-    assert restored.predict_proba(balls=0, strikes=0, stand="R", p_throws="R") == model.predict_proba(
+    assert restored.predict_proba(
+        balls=0, strikes=0, stand="R", p_throws="R"
+    ) == model.predict_proba(
         balls=0,
         strikes=0,
         stand="R",

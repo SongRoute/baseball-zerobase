@@ -143,9 +143,7 @@ def test_audit_rejects_duplicate_pitch_keys(valid_snapshot_frame: pl.DataFrame) 
         ),
         (
             "starter flag false",
-            lambda frame: frame.with_columns(
-                _replace_row("is_official_starter_pitch", 0, False)
-            ),
+            lambda frame: frame.with_columns(_replace_row("is_official_starter_pitch", 0, False)),
             "official starter",
         ),
         (

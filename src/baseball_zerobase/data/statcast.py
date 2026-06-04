@@ -106,7 +106,9 @@ def _install_immutable_partition(temp_path: Path, data_path: Path, checksum: str
     existing_manifest_checksum = _read_manifest_sha256(manifest_path)
     if existing_manifest_checksum is not None and existing_manifest_checksum != checksum:
         temp_path.unlink()
-        raise ManifestConflictError(f"statcast manifest already exists with a different checksum: {manifest_path}")
+        raise ManifestConflictError(
+            f"statcast manifest already exists with a different checksum: {manifest_path}"
+        )
 
     try:
         os.link(temp_path, data_path)

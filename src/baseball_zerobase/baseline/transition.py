@@ -596,7 +596,9 @@ def _atom_is_valid_for_context(
     if atom.plate_appearance_ended:
         if atom.balls_after != 0 or atom.strikes_after != 0:
             return False
-        if not _terminal_outcome_is_valid(atom, balls=balls, strikes=strikes, outs_delta=outs_delta):
+        if not _terminal_outcome_is_valid(
+            atom, balls=balls, strikes=strikes, outs_delta=outs_delta
+        ):
             return False
     elif not _non_terminal_count_is_valid(atom, balls=balls, strikes=strikes, outs=outs):
         return False
@@ -703,11 +705,7 @@ def _runner_state_is_reachable(
 
 
 def _runner_bits_from_tuple(runners_after: tuple[bool, bool, bool]) -> int:
-    return (
-        int(runners_after[0])
-        | (int(runners_after[1]) << 1)
-        | (int(runners_after[2]) << 2)
-    )
+    return int(runners_after[0]) | (int(runners_after[1]) << 1) | (int(runners_after[2]) << 2)
 
 
 def _forced_walk_state(before_runners: int) -> int:
@@ -776,7 +774,9 @@ def _remaining_runners_do_not_move_backward(before_runners: int, after_bits: int
     after_bases = [base for base in range(1, 4) if after_bits & (1 << (base - 1))]
     if len(after_bases) > len(before_bases):
         return False
-    return all(after_base >= before_base for before_base, after_base in zip(before_bases, after_bases))
+    return all(
+        after_base >= before_base for before_base, after_base in zip(before_bases, after_bases)
+    )
 
 
 def _row_weight(row: Mapping[str, Any]) -> int:

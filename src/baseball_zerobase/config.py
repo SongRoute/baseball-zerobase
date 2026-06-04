@@ -38,7 +38,9 @@ def _load_base_yaml(project_root: Path) -> dict[str, Any]:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="BASEBALL_ZEROBASE_", nested_model_default_partial_update=True)
+    model_config = SettingsConfigDict(
+        env_prefix="BASEBALL_ZEROBASE_", nested_model_default_partial_update=True
+    )
 
     project_root: Path = Field(default_factory=Path.cwd)
     paths: PathSettings = Field(default_factory=PathSettings)

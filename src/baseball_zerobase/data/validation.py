@@ -159,8 +159,7 @@ def _reject_duplicate_pitch_keys(frame: pl.DataFrame) -> None:
 
     if malformed:
         raise LeakageError(
-            "snapshot join keys cannot be null; malformed row indexes: "
-            f"{_sample(malformed)}"
+            f"snapshot join keys cannot be null; malformed row indexes: {_sample(malformed)}"
         )
     if duplicates:
         raise LeakageError(
@@ -256,9 +255,7 @@ def _reject_relative_zones(frame: pl.DataFrame) -> None:
 def _reject_starter_context(frame: pl.DataFrame) -> None:
     bad_official_rows = [
         str(index)
-        for index, row in enumerate(
-            frame.select("is_official_starter_pitch").iter_rows(named=True)
-        )
+        for index, row in enumerate(frame.select("is_official_starter_pitch").iter_rows(named=True))
         if _bool_value(row["is_official_starter_pitch"]) is not True
     ]
     if bad_official_rows:
@@ -304,8 +301,7 @@ def _reject_transition_fields(frame: pl.DataFrame) -> None:
     ]
     if negative_runs_rows:
         raise LeakageError(
-            "runs_scored cannot be negative; "
-            f"invalid row indexes: {_sample(negative_runs_rows)}"
+            f"runs_scored cannot be negative; invalid row indexes: {_sample(negative_runs_rows)}"
         )
 
     decreasing_out_rows = []
@@ -466,17 +462,13 @@ def _string_or_none(value: Any) -> str | None:
 
 def _true_count(frame: pl.DataFrame, column: str) -> int:
     return sum(
-        1
-        for row in frame.select(column).iter_rows(named=True)
-        if _bool_value(row[column]) is True
+        1 for row in frame.select(column).iter_rows(named=True) if _bool_value(row[column]) is True
     )
 
 
 def _unique_count(frame: pl.DataFrame, column: str) -> int:
     values = {
-        row[column]
-        for row in frame.select(column).iter_rows(named=True)
-        if row[column] is not None
+        row[column] for row in frame.select(column).iter_rows(named=True) if row[column] is not None
     }
     return len(values)
 

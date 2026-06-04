@@ -345,7 +345,9 @@ def write_development_dataset(
     try:
         dataset.frame.write_parquet(temp_path)
         checksum = sha256_file(temp_path)
-        installed = _install_immutable_parquet(temp_path, output_path, checksum, "development dataset")
+        installed = _install_immutable_parquet(
+            temp_path, output_path, checksum, "development dataset"
+        )
         try:
             return write_manifest(
                 output_path,
@@ -385,7 +387,9 @@ def _install_immutable_parquet(temp_path: Path, data_path: Path, checksum: str, 
         ):
             return False
         if actual_checksum != checksum:
-            raise ManifestConflictError(f"{label} already exists with a different checksum: {data_path}")
+            raise ManifestConflictError(
+                f"{label} already exists with a different checksum: {data_path}"
+            )
         raise ManifestConflictError(
             f"{label} manifest already exists with a different checksum: {manifest_path}"
         )
@@ -408,7 +412,9 @@ def _install_immutable_parquet(temp_path: Path, data_path: Path, checksum: str, 
         ):
             return False
         if actual_checksum != checksum:
-            raise ManifestConflictError(f"{label} already exists with a different checksum: {data_path}")
+            raise ManifestConflictError(
+                f"{label} already exists with a different checksum: {data_path}"
+            )
         raise ManifestConflictError(
             f"{label} manifest already exists with a different checksum: {manifest_path}"
         )
@@ -495,9 +501,9 @@ def _normalize_pitch_row(
     if normalized.get("pitch_timestamp") is None:
         normalized["pitch_timestamp"] = _fallback_pitch_timestamp(normalized, index)
     if normalized.get("completed_event_timestamp") is None:
-        normalized["completed_event_timestamp"] = _datetime(normalized["pitch_timestamp"]) + timedelta(
-            milliseconds=1
-        )
+        normalized["completed_event_timestamp"] = _datetime(
+            normalized["pitch_timestamp"]
+        ) + timedelta(milliseconds=1)
     if normalized.get("game_start_timestamp") is None:
         normalized["game_start_timestamp"] = _datetime(normalized["pitch_timestamp"]) - timedelta(
             seconds=max(index + 1, 1)
@@ -675,9 +681,9 @@ def _supported_event_expr(frame: pl.DataFrame) -> pl.Expr:
 
 
 def _non_empty_string(column: str) -> pl.Expr:
-    return (pl.col(column).is_not_null() & (pl.col(column).cast(pl.String).str.len_chars() > 0)).fill_null(
-        False
-    )
+    return (
+        pl.col(column).is_not_null() & (pl.col(column).cast(pl.String).str.len_chars() > 0)
+    ).fill_null(False)
 
 
 def _normalized_label(column: str) -> pl.Expr:
@@ -691,8 +697,8 @@ def _normalized_label(column: str) -> pl.Expr:
 
 
 def _excluded_label_expr(column: str) -> pl.Expr:
-    return _normalized_label(column).is_in(sorted(_AUTOMATIC_OR_INTENTIONAL_LABELS)).fill_null(
-        False
+    return (
+        _normalized_label(column).is_in(sorted(_AUTOMATIC_OR_INTENTIONAL_LABELS)).fill_null(False)
     )
 
 

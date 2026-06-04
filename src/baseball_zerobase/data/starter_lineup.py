@@ -49,36 +49,33 @@ def attach_starter_and_lineup_context(
         & pl.col("offense_initial_lineup_stands").is_not_null()
     )
 
-    return (
-        joined.with_columns(
-            expected_starter_id=pl.when(half_inning == "top")
-            .then(pl.col("home_starter_id"))
-            .when(half_inning == "bottom")
-            .then(pl.col("away_starter_id"))
-            .otherwise(None),
-            offense_initial_lineup=pl.when(half_inning == "top")
-            .then(pl.col("away_initial_lineup"))
-            .when(half_inning == "bottom")
-            .then(pl.col("home_initial_lineup"))
-            .otherwise(None),
-            offense_initial_lineup_stands=pl.when(half_inning == "top")
-            .then(pl.col("away_initial_lineup_stands"))
-            .when(half_inning == "bottom")
-            .then(pl.col("home_initial_lineup_stands"))
-            .otherwise(None),
-        )
-        .with_columns(
-            is_official_starter_pitch=(
-                pl.col("pitcher") == pl.col("expected_starter_id")
-            ).fill_null(False),
-            lineup_stable=has_lineup_context
-            & (
-                pl.col("first_substitution_at_bat").is_null()
-                | (pl.col("at_bat_number") < pl.col("first_substitution_at_bat"))
-            ),
-            current_lineup_slot=pl.struct(["batter", "offense_initial_lineup"]).map_elements(
-                _lineup_slot,
-                return_dtype=pl.Int64,
-            ),
-        )
+    return joined.with_columns(
+        expected_starter_id=pl.when(half_inning == "top")
+        .then(pl.col("home_starter_id"))
+        .when(half_inning == "bottom")
+        .then(pl.col("away_starter_id"))
+        .otherwise(None),
+        offense_initial_lineup=pl.when(half_inning == "top")
+        .then(pl.col("away_initial_lineup"))
+        .when(half_inning == "bottom")
+        .then(pl.col("home_initial_lineup"))
+        .otherwise(None),
+        offense_initial_lineup_stands=pl.when(half_inning == "top")
+        .then(pl.col("away_initial_lineup_stands"))
+        .when(half_inning == "bottom")
+        .then(pl.col("home_initial_lineup_stands"))
+        .otherwise(None),
+    ).with_columns(
+        is_official_starter_pitch=(pl.col("pitcher") == pl.col("expected_starter_id")).fill_null(
+            False
+        ),
+        lineup_stable=has_lineup_context
+        & (
+            pl.col("first_substitution_at_bat").is_null()
+            | (pl.col("at_bat_number") < pl.col("first_substitution_at_bat"))
+        ),
+        current_lineup_slot=pl.struct(["batter", "offense_initial_lineup"]).map_elements(
+            _lineup_slot,
+            return_dtype=pl.Int64,
+        ),
     )

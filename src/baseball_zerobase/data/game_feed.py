@@ -194,7 +194,9 @@ def _lineup_stands(
     lineup: tuple[int, ...],
     opposing_starter_throws: str,
 ) -> tuple[str, ...]:
-    return tuple(_resolved_bat_side(feed, player_id, opposing_starter_throws) for player_id in lineup)
+    return tuple(
+        _resolved_bat_side(feed, player_id, opposing_starter_throws) for player_id in lineup
+    )
 
 
 def _all_plays(feed: JsonObject) -> list[Any]:
@@ -238,7 +240,9 @@ def _is_substitution_event(event: JsonObject) -> bool:
     details = event.get("details")
     candidates: list[Any] = []
     if isinstance(details, dict):
-        candidates.extend([details.get("event"), details.get("eventType"), details.get("description")])
+        candidates.extend(
+            [details.get("event"), details.get("eventType"), details.get("description")]
+        )
     candidates.extend([event.get("event"), event.get("eventType")])
     explicit_event_types = {"defensive_switch"}
     for candidate in candidates:
@@ -291,7 +295,9 @@ def normalize_game_feed(feed: JsonObject) -> NormalizedGame:
 
     return NormalizedGame(
         game_pk=game_pk,
-        game_date=date.fromisoformat(str(game_data.get("officialDate", game_start_timestamp.date()))),
+        game_date=date.fromisoformat(
+            str(game_data.get("officialDate", game_start_timestamp.date()))
+        ),
         game_type=str(game_info.get("type")),
         home_team_id=_team_id(feed, "home"),
         away_team_id=_team_id(feed, "away"),
@@ -547,7 +553,9 @@ def download_game_feed(
 
     raw_path, raw_manifest_path = _write_raw_game_feed(feed, checked_game_pk, project_root)
     raw_sha256 = sha256_file(raw_path)
-    normalized_dir = (project_root / "data/normalized/games" / f"game_pk={checked_game_pk}").resolve()
+    normalized_dir = (
+        project_root / "data/normalized/games" / f"game_pk={checked_game_pk}"
+    ).resolve()
     normalized_game_path = normalized_dir / "game.parquet"
     normalized_pitch_events_path = normalized_dir / "pitch_events.parquet"
     _write_normalized_game(normalized_game, normalized_game_path, raw_sha256=raw_sha256)
@@ -571,7 +579,9 @@ def read_game_pks_parquet(path: Path) -> tuple[int, ...]:
     frame = pl.read_parquet(path)
     if "game_pk" not in frame.columns:
         raise ValueError(f"game_pk parquet must contain a game_pk column: {path}")
-    game_pks = frame.select(pl.col("game_pk").drop_nulls().cast(pl.Int64).unique().sort()).to_series()
+    game_pks = frame.select(
+        pl.col("game_pk").drop_nulls().cast(pl.Int64).unique().sort()
+    ).to_series()
     return tuple(int(game_pk) for game_pk in game_pks.to_list())
 
 
@@ -581,7 +591,4 @@ def download_games_from_parquet(
 ) -> list[GameFeedDownloadResult]:
     game_pks = read_game_pks_parquet(game_pks_parquet)
     with httpx.Client(timeout=30) as client:
-        return [
-            download_game_feed(game_pk, project_root, client=client)
-            for game_pk in game_pks
-        ]
+        return [download_game_feed(game_pk, project_root, client=client) for game_pk in game_pks]

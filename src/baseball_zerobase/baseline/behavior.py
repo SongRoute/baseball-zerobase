@@ -101,8 +101,7 @@ class EmpiricalBehaviorModel:
             return {}
 
         return {
-            action: (float(counts[action]) + self.alpha) / denominator
-            for action in self._actions
+            action: (float(counts[action]) + self.alpha) / denominator for action in self._actions
         }
 
     def sample(
@@ -345,7 +344,10 @@ def _count_key_from_row(row: Mapping[str, Any]) -> _CountKey | None:
     if "balls" not in row or "strikes" not in row:
         return None
     try:
-        return (_coerce_count_value(row["balls"], "balls"), _coerce_count_value(row["strikes"], "strikes"))
+        return (
+            _coerce_count_value(row["balls"], "balls"),
+            _coerce_count_value(row["strikes"], "strikes"),
+        )
     except ValueError:
         return None
 
@@ -438,14 +440,18 @@ def _counter_from_json(value: object) -> Counter[ActionKey]:
     return counter
 
 
-def _keyed_counts_to_json(counts: Mapping[tuple[Any, ...], Counter[ActionKey]]) -> list[dict[str, object]]:
+def _keyed_counts_to_json(
+    counts: Mapping[tuple[Any, ...], Counter[ActionKey]],
+) -> list[dict[str, object]]:
     return [
         {"key": list(key), "actions": _counter_to_json(counter)}
         for key, counter in sorted(counts.items(), key=lambda item: item[0])
     ]
 
 
-def _keyed_counts_from_json(value: object, *, key_size: int) -> dict[tuple[Any, ...], Counter[ActionKey]]:
+def _keyed_counts_from_json(
+    value: object, *, key_size: int
+) -> dict[tuple[Any, ...], Counter[ActionKey]]:
     if not isinstance(value, list):
         raise ValueError("serialized keyed counts must be a list")
     counts: dict[tuple[Any, ...], Counter[ActionKey]] = {}

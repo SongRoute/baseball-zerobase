@@ -92,7 +92,9 @@ def test_download_statcast_writes_partition_and_manifest(tmp_path, monkeypatch) 
 
     result = download_statcast_range(date(2024, 4, 1), date(2024, 4, 1), tmp_path)
 
-    assert result.data_path == tmp_path / "data/raw/statcast/start=2024-04-01_end=2024-04-01.parquet"
+    assert (
+        result.data_path == tmp_path / "data/raw/statcast/start=2024-04-01_end=2024-04-01.parquet"
+    )
     assert result.data_path.exists()
     assert result.manifest_path.exists()
 
@@ -115,7 +117,9 @@ def test_download_statcast_rejects_corrupted_existing_partition_with_matching_ma
         download_statcast_range(date(2024, 4, 1), date(2024, 4, 1), tmp_path)
 
     assert result.data_path.read_bytes() == b"corrupted partition bytes"
-    assert json.loads(result.manifest_path.read_text(encoding="utf-8"))["sha256"] == manifest_checksum
+    assert (
+        json.loads(result.manifest_path.read_text(encoding="utf-8"))["sha256"] == manifest_checksum
+    )
 
 
 def test_install_immutable_partition_rejects_racy_existing_payload(tmp_path, monkeypatch) -> None:
@@ -181,7 +185,9 @@ def test_download_statcast_routes_locked_role_to_locked_raw(tmp_path, monkeypatc
     assert result.data_path.exists()
 
 
-def test_download_statcast_rejects_mixed_dataset_roles_before_writing(tmp_path, monkeypatch) -> None:
+def test_download_statcast_rejects_mixed_dataset_roles_before_writing(
+    tmp_path, monkeypatch
+) -> None:
     frame = pd.concat(
         [
             statcast_frame(game_pk=1, game_date="2024-04-01"),

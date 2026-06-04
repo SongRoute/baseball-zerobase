@@ -49,7 +49,9 @@ def test_fixed_first_action_is_used_for_first_pitch_only() -> None:
     )
     simulator = InningSimulator(behavior, transitions, max_pitches=10)
 
-    simulator.simulate_many(_initial_state(), trials=1, seed=9, fixed_first_action=("SL", "low_away"))
+    simulator.simulate_many(
+        _initial_state(), trials=1, seed=9, fixed_first_action=("SL", "low_away")
+    )
 
     assert transitions.actions == [
         ("SL", "low_away"),
@@ -74,7 +76,12 @@ def test_score_diff_decreases_when_batting_team_scores() -> None:
     simulator = InningSimulator(
         SequencedBehaviorModel([("FF", "middle_middle")]),
         SequenceTransitionModel(
-            [_single_atom(runs_scored=1), _out_atom(1), _out_atom(2), _out_atom(3, half_inning_ended=True)]
+            [
+                _single_atom(runs_scored=1),
+                _out_atom(1),
+                _out_atom(2),
+                _out_atom(3, half_inning_ended=True),
+            ]
         ),
         max_pitches=10,
     )

@@ -230,7 +230,10 @@ def _development_filter_frame() -> pl.DataFrame:
         }
     )
     return frame.with_columns(
-        pl.when(pl.col("game_pk") == 2).then(pl.lit("S")).otherwise(pl.col("game_type")).alias("game_type"),
+        pl.when(pl.col("game_pk") == 2)
+        .then(pl.lit("S"))
+        .otherwise(pl.col("game_type"))
+        .alias("game_type"),
         pl.when(pl.col("game_pk") == 3)
         .then(pl.lit(False))
         .otherwise(pl.col("is_official_starter_pitch"))
