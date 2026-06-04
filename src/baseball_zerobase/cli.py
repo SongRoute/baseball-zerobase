@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from baseball_zerobase.data.snapshots import (
 )
 from baseball_zerobase.data.splits import DatasetRole, classify_row, require_dev_role
 from baseball_zerobase.data.statcast import download_statcast_range
+from baseball_zerobase.data.validation import audit_snapshots
 from baseball_zerobase.paths import require_dev_input
 
 app = typer.Typer(no_args_is_help=True)
@@ -153,3 +155,28 @@ def build_dev_dataset_command(
         input_paths={"snapshots": snapshots_path},
     )
     typer.echo(f"Wrote {dataset.frame.height} development rows to {output_path} ({manifest.path})")
+
+
+@app.command("validate-dataset")
+def validate_dataset_command(
+    snapshots_parquet: Path = typer.Option(...),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    snapshots_path = require_dev_input(snapshots_parquet, settings)
+    snapshots = pl.read_parquet(snapshots_path)
+    report = audit_snapshots(snapshots)
+    if report.locked_row_count:
+        locked_roles = {
+            role
+            for role in (
+                DatasetRole.LOCKED_POSTSEASON_2025.value,
+                DatasetRole.LOCKED_REGULAR_2026.value,
+            )
+            if report.dataset_role_counts.get(role, 0)
+        }
+        raise typer.BadParameter(
+            "development validation cannot read locked snapshot roles: "
+            f"{sorted(locked_roles)}"
+        )
+    typer.echo(json.dumps(report.to_dict(), indent=2, sort_keys=True))
