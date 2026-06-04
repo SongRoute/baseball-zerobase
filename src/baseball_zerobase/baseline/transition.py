@@ -66,10 +66,10 @@ class EmpiricalTransitionModel:
         self,
         frame: object,
         *,
-        training_manifest_hash: str | None = None,
+        training_manifest_hash: str,
     ) -> EmpiricalTransitionModel:
-        if training_manifest_hash is not None and not _string_or_none(training_manifest_hash):
-            raise ValueError("training_manifest_hash must be a non-empty string when provided")
+        if not _string_or_none(training_manifest_hash):
+            raise ValueError("training_manifest_hash is required")
 
         self._actions = []
         self._global_counts = Counter()
@@ -224,6 +224,8 @@ class EmpiricalTransitionModel:
     def to_json(self) -> str:
         if not self._fitted:
             raise ValueError("EmpiricalTransitionModel must be fit before serialization")
+        if self.training_manifest_hash is None:
+            raise ValueError("training_manifest_hash is required")
 
         payload = {
             "model_type": "EmpiricalTransitionModel",
@@ -266,12 +268,10 @@ class EmpiricalTransitionModel:
             min_support=int(settings["min_support"]),
             epsilon=float(settings["epsilon"]),
         )
-        training_manifest_hash = payload.get("training_manifest_hash")
-        if training_manifest_hash is not None:
-            model.training_manifest_hash = _require_string(
-                training_manifest_hash,
-                "serialized transition model is missing training_manifest_hash",
-            )
+        model.training_manifest_hash = _require_string(
+            payload.get("training_manifest_hash"),
+            "serialized transition model is missing training_manifest_hash",
+        )
 
         actions = payload.get("actions")
         if not isinstance(actions, list):
@@ -331,41 +331,74 @@ class EmpiricalTransitionModel:
         handedness = _normalize_handedness(stand)
         pitcher_handedness = _normalize_handedness(p_throws)
 
-        full_counts = self._full_counts.get(
-            (
-                action[0],
-                action[1],
-                ball_count,
-                strike_count,
-                out_count,
-                runner_bits,
-                handedness,
-                pitcher_handedness,
+        full_counts = _valid_counts_for_context(
+            self._full_counts.get(
+                (
+                    action[0],
+                    action[1],
+                    ball_count,
+                    strike_count,
+                    out_count,
+                    runner_bits,
+                    handedness,
+                    pitcher_handedness,
+                ),
+                Counter(),
             ),
-            Counter(),
+            balls=ball_count,
+            strikes=strike_count,
+            outs=out_count,
+            runners=runner_bits,
         )
         if full_counts.total() >= self.min_support:
             return full_counts, "action_balls_strikes_outs_runners_stand_p_throws"
 
-        handed_count_counts = self._handed_count_counts.get(
-            (action[0], action[1], ball_count, strike_count, handedness, pitcher_handedness),
-            Counter(),
+        handed_count_counts = _valid_counts_for_context(
+            self._handed_count_counts.get(
+                (action[0], action[1], ball_count, strike_count, handedness, pitcher_handedness),
+                Counter(),
+            ),
+            balls=ball_count,
+            strikes=strike_count,
+            outs=out_count,
+            runners=runner_bits,
         )
         if handed_count_counts.total() >= self.min_support:
             return handed_count_counts, "action_balls_strikes_stand_p_throws"
 
-        action_count_counts = self._action_count_counts.get(
-            (action[0], action[1], ball_count, strike_count),
-            Counter(),
+        action_count_counts = _valid_counts_for_context(
+            self._action_count_counts.get(
+                (action[0], action[1], ball_count, strike_count),
+                Counter(),
+            ),
+            balls=ball_count,
+            strikes=strike_count,
+            outs=out_count,
+            runners=runner_bits,
         )
         if action_count_counts.total() >= self.min_support:
             return action_count_counts, "action_balls_strikes"
 
-        action_counts = self._action_counts.get(action, Counter())
+        action_counts = _valid_counts_for_context(
+            self._action_counts.get(action, Counter()),
+            balls=ball_count,
+            strikes=strike_count,
+            outs=out_count,
+            runners=runner_bits,
+        )
         if action_counts.total() >= self.min_support:
             return action_counts, "action"
 
-        return self._global_counts, "global"
+        return (
+            _valid_counts_for_context(
+                self._global_counts,
+                balls=ball_count,
+                strikes=strike_count,
+                outs=out_count,
+                runners=runner_bits,
+            ),
+            "global",
+        )
 
 
 def _iter_rows(frame: object) -> list[Mapping[str, Any]]:
@@ -515,6 +548,83 @@ def _atom_preserves_state_invariants(atom: TransitionAtom, row: Mapping[str, Any
     if not atom.half_inning_ended and atom.terminal_reason is not None:
         return False
     return True
+
+
+def _valid_counts_for_context(
+    counts: Counter[TransitionAtom],
+    *,
+    balls: int,
+    strikes: int,
+    outs: int,
+    runners: int,
+) -> Counter[TransitionAtom]:
+    return Counter(
+        {
+            atom: count
+            for atom, count in counts.items()
+            if _atom_is_valid_for_context(
+                atom,
+                balls=balls,
+                strikes=strikes,
+                outs=outs,
+                runners=runners,
+            )
+        }
+    )
+
+
+def _atom_is_valid_for_context(
+    atom: TransitionAtom,
+    *,
+    balls: int,
+    strikes: int,
+    outs: int,
+    runners: int,
+) -> bool:
+    if atom.outs_after < outs:
+        return False
+    if atom.half_inning_ended:
+        if not atom.plate_appearance_ended or atom.outs_after != 3 or atom.terminal_reason is None:
+            return False
+    elif atom.terminal_reason is not None:
+        return False
+
+    if atom.plate_appearance_ended:
+        if atom.balls_after != 0 or atom.strikes_after != 0:
+            return False
+    elif not _non_terminal_count_is_valid(atom, balls=balls, strikes=strikes, outs=outs):
+        return False
+
+    before_runners = _runner_count(runners)
+    after_runners = sum(atom.runners_after)
+    batter_added = 1 if atom.plate_appearance_ended else 0
+    return after_runners + atom.runs_scored <= before_runners + batter_added
+
+
+def _non_terminal_count_is_valid(
+    atom: TransitionAtom,
+    *,
+    balls: int,
+    strikes: int,
+    outs: int,
+) -> bool:
+    if atom.outs_after != outs or atom.half_inning_ended:
+        return False
+
+    if atom.outcome == OutcomeLabel.BALL:
+        return balls < 3 and atom.balls_after == balls + 1 and atom.strikes_after == strikes
+
+    if atom.outcome in {OutcomeLabel.CALLED_STRIKE, OutcomeLabel.SWINGING_STRIKE}:
+        return strikes < 2 and atom.balls_after == balls and atom.strikes_after == strikes + 1
+
+    if atom.outcome == OutcomeLabel.FOUL:
+        return atom.balls_after == balls and atom.strikes_after == min(strikes + 1, 2)
+
+    return atom.balls_after >= balls and atom.strikes_after >= strikes
+
+
+def _runner_count(runners: int) -> int:
+    return int(bool(runners & 1)) + int(bool(runners & 2)) + int(bool(runners & 4))
 
 
 def _row_weight(row: Mapping[str, Any]) -> int:

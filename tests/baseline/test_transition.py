@@ -115,7 +115,7 @@ def test_transition_distribution_sums_to_one() -> None:
                 "p_throws": "R",
             },
             "global",
-            11,
+            7,
         ),
     ],
 )
@@ -266,12 +266,56 @@ def test_transition_model_rejects_raw_statcast_zone_fallback() -> None:
         )
 
 
+def test_transition_backoff_filters_atoms_that_violate_current_context() -> None:
+    frame = pl.DataFrame(
+        [
+            _row("FF", "middle_middle", 0, 0, 0, 0, "R", "R", _called_strike_atom()),
+            _row("FF", "middle_middle", 0, 0, 0, 0, "R", "R", _called_strike_atom()),
+            _row("SL", "middle_middle", 3, 2, 2, 0, "R", "R", _strikeout_atom()),
+        ]
+    )
+    model = EmpiricalTransitionModel(min_support=2).fit(
+        frame,
+        training_manifest_hash="sha256:transitions",
+    )
+
+    distribution = model.predict_distribution(
+        pitch_type="FF",
+        relative_zone="middle_middle",
+        balls=3,
+        strikes=2,
+        outs=2,
+        runners=0,
+        stand="R",
+        p_throws="R",
+    )
+
+    assert len(distribution) == 1
+    assert distribution[_strikeout_atom()] == 1.0
+    assert model.last_backoff_level == "global"
+
+
+def test_transition_model_requires_training_manifest_hash() -> None:
+    with pytest.raises(ValueError, match="training_manifest_hash is required"):
+        EmpiricalTransitionModel().fit(_transition_frame(), training_manifest_hash="")
+
+
 def _transition_frame() -> pl.DataFrame:
     rows = [
         _row("FF", "middle_middle", 0, 0, 0, 0, "R", "R", _called_strike_atom()),
         _row("FF", "middle_middle", 0, 0, 0, 0, "R", "R", _called_strike_atom()),
         _row("FF", "middle_middle", 0, 0, 0, 0, "R", "R", _ball_atom()),
-        _row("FF", "middle_middle", 1, 1, 0, 0, "R", "R", _called_strike_atom()),
+        _row(
+            "FF",
+            "middle_middle",
+            1,
+            1,
+            0,
+            0,
+            "R",
+            "R",
+            _called_strike_atom(balls_after=1, strikes_after=2),
+        ),
         _row(
             "FF",
             "middle_middle",
@@ -281,12 +325,12 @@ def _transition_frame() -> pl.DataFrame:
             1,
             "R",
             "R",
-            _ball_atom(outs_after=1, runners_after=(True, False, False)),
+            _in_play_out_atom(outs_after=1),
         ),
-        _row("SL", "low_away", 2, 1, 0, 0, "R", "R", _called_strike_atom()),
-        _row("SL", "low_away", 2, 1, 1, 0, "L", "L", _ball_atom(outs_after=1)),
-        _row("CH", "chase_low", 3, 2, 0, 0, "R", "R", _called_strike_atom()),
-        _row("CH", "chase_low", 1, 0, 0, 0, "L", "L", _ball_atom()),
+        _row("SL", "low_away", 2, 1, 0, 0, "R", "R", _called_strike_atom(balls_after=2, strikes_after=2)),
+        _row("SL", "low_away", 2, 1, 1, 0, "L", "L", _in_play_out_atom(outs_after=1)),
+        _row("CH", "chase_low", 3, 2, 0, 0, "R", "R", _walk_atom()),
+        _row("CH", "chase_low", 1, 0, 0, 0, "L", "L", _in_play_out_atom(outs_after=1)),
         _row("SI", "middle_away", 0, 1, 2, 3, "L", "R", _single_atom()),
         _row("SI", "middle_away", 0, 1, 2, 3, "L", "R", _single_atom()),
     ]
@@ -319,11 +363,11 @@ def _row(
     }
 
 
-def _called_strike_atom() -> TransitionAtom:
+def _called_strike_atom(*, balls_after: int = 0, strikes_after: int = 1) -> TransitionAtom:
     return TransitionAtom(
         outcome=OutcomeLabel.CALLED_STRIKE,
-        balls_after=0,
-        strikes_after=1,
+        balls_after=balls_after,
+        strikes_after=strikes_after,
         outs_after=0,
         runners_after=(False, False, False),
         runs_scored=0,
@@ -335,12 +379,13 @@ def _called_strike_atom() -> TransitionAtom:
 
 def _ball_atom(
     *,
+    balls_after: int = 1,
     outs_after: int = 0,
     runners_after: tuple[bool, bool, bool] = (False, False, False),
 ) -> TransitionAtom:
     return TransitionAtom(
         outcome=OutcomeLabel.BALL,
-        balls_after=1,
+        balls_after=balls_after,
         strikes_after=0,
         outs_after=outs_after,
         runners_after=runners_after,
@@ -348,6 +393,48 @@ def _ball_atom(
         plate_appearance_ended=False,
         half_inning_ended=False,
         terminal_reason=None,
+    )
+
+
+def _in_play_out_atom(*, outs_after: int) -> TransitionAtom:
+    return TransitionAtom(
+        outcome=OutcomeLabel.IN_PLAY_OUT,
+        balls_after=0,
+        strikes_after=0,
+        outs_after=outs_after,
+        runners_after=(False, False, False),
+        runs_scored=0,
+        plate_appearance_ended=True,
+        half_inning_ended=False,
+        terminal_reason=None,
+    )
+
+
+def _walk_atom() -> TransitionAtom:
+    return TransitionAtom(
+        outcome=OutcomeLabel.WALK,
+        balls_after=0,
+        strikes_after=0,
+        outs_after=0,
+        runners_after=(True, False, False),
+        runs_scored=0,
+        plate_appearance_ended=True,
+        half_inning_ended=False,
+        terminal_reason=None,
+    )
+
+
+def _strikeout_atom() -> TransitionAtom:
+    return TransitionAtom(
+        outcome=OutcomeLabel.STRIKEOUT,
+        balls_after=0,
+        strikes_after=0,
+        outs_after=3,
+        runners_after=(False, False, False),
+        runs_scored=0,
+        plate_appearance_ended=True,
+        half_inning_ended=True,
+        terminal_reason="three_outs",
     )
 
 
