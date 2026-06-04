@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -239,7 +240,14 @@ def _is_substitution_event(event: JsonObject) -> bool:
     if isinstance(details, dict):
         candidates.extend([details.get("event"), details.get("eventType"), details.get("description")])
     candidates.extend([event.get("event"), event.get("eventType")])
-    return any("substitution" in str(candidate).lower() for candidate in candidates if candidate is not None)
+    explicit_event_types = {"defensive_switch"}
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        normalized = str(candidate).strip().lower().replace("-", "_").replace(" ", "_")
+        if "substitution" in normalized or normalized in explicit_event_types:
+            return True
+    return False
 
 
 def _first_substitution_at_bat(
@@ -320,7 +328,7 @@ def normalize_pitch_events(feed: JsonObject) -> tuple[NormalizedPitchEvent, ...]
             if event.get("isPitch") is not True:
                 continue
             pitch_time = event.get("startTime")
-            completed_time = event.get("endTime") or pitch_time or play_end_time
+            completed_time = event.get("endTime") or play_end_time or pitch_time
             if pitch_time is None or completed_time is None:
                 raise ValueError("pitch event is missing startTime/endTime")
             events.append(
@@ -392,7 +400,24 @@ def _install_immutable_file(temp_path: Path, data_path: Path, checksum: str, lab
             f"{label} manifest already exists with a different checksum: {manifest_path}"
         )
 
-    temp_path.replace(data_path)
+    try:
+        os.link(temp_path, data_path)
+    except FileExistsError:
+        actual_checksum = sha256_file(data_path)
+        existing_manifest_checksum = _read_existing_sha256(manifest_path)
+        temp_path.unlink()
+        if actual_checksum == checksum and (
+            existing_manifest_checksum is None or existing_manifest_checksum == checksum
+        ):
+            return
+        if actual_checksum != checksum:
+            raise ManifestConflictError(
+                f"{label} already exists with a different checksum: {data_path}"
+            )
+        raise ManifestConflictError(
+            f"{label} manifest already exists with a different checksum: {manifest_path}"
+        )
+    temp_path.unlink()
 
 
 def _write_raw_game_feed(feed: JsonObject, game_pk: int, project_root: Path) -> tuple[Path, Path]:
@@ -432,7 +457,14 @@ def _write_raw_game_feed(feed: JsonObject, game_pk: int, project_root: Path) -> 
     return data_path, manifest.path
 
 
-def _write_parquet_atomic(frame: pl.DataFrame, data_path: Path) -> None:
+def _write_parquet_immutable(
+    frame: pl.DataFrame,
+    data_path: Path,
+    *,
+    source: str,
+    request: dict[str, Any],
+    label: str,
+) -> None:
     data_path = data_path.resolve()
     data_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -445,23 +477,52 @@ def _write_parquet_atomic(frame: pl.DataFrame, data_path: Path) -> None:
 
     try:
         frame.write_parquet(temp_path)
-        temp_path.replace(data_path)
+        checksum = sha256_file(temp_path)
+        _install_immutable_file(temp_path, data_path, checksum, label)
+        write_manifest(
+            data_path,
+            source=source,
+            request=request,
+            row_count=frame.height,
+            schema_names=frame.columns,
+            sha256=checksum,
+        )
     except Exception:
         if temp_path.exists():
             temp_path.unlink()
         raise
 
 
-def _write_normalized_game(game: NormalizedGame, data_path: Path) -> None:
-    _write_parquet_atomic(pl.DataFrame([game.model_dump(mode="json")]), data_path)
+def _write_normalized_game(
+    game: NormalizedGame,
+    data_path: Path,
+    *,
+    raw_sha256: str,
+) -> None:
+    _write_parquet_immutable(
+        pl.DataFrame([game.model_dump(mode="json")]),
+        data_path,
+        source="mlb-statsapi-normalized-game",
+        request={"game_pk": game.game_pk, "raw_sha256": raw_sha256},
+        label="normalized game",
+    )
 
 
 def _write_normalized_pitch_events(
     pitch_events: tuple[NormalizedPitchEvent, ...],
     data_path: Path,
+    *,
+    game_pk: int,
+    raw_sha256: str,
 ) -> None:
     rows = [event.model_dump(mode="json") for event in pitch_events]
-    _write_parquet_atomic(pl.DataFrame(rows), data_path)
+    _write_parquet_immutable(
+        pl.DataFrame(rows),
+        data_path,
+        source="mlb-statsapi-normalized-pitch-events",
+        request={"game_pk": game_pk, "raw_sha256": raw_sha256},
+        label="normalized pitch events",
+    )
 
 
 def download_game_feed(
@@ -475,11 +536,17 @@ def download_game_feed(
     pitch_events = normalize_pitch_events(feed)
 
     raw_path, raw_manifest_path = _write_raw_game_feed(feed, game_pk, project_root)
+    raw_sha256 = sha256_file(raw_path)
     normalized_dir = (project_root / "data/normalized/games" / f"game_pk={game_pk}").resolve()
     normalized_game_path = normalized_dir / "game.parquet"
     normalized_pitch_events_path = normalized_dir / "pitch_events.parquet"
-    _write_normalized_game(normalized_game, normalized_game_path)
-    _write_normalized_pitch_events(pitch_events, normalized_pitch_events_path)
+    _write_normalized_game(normalized_game, normalized_game_path, raw_sha256=raw_sha256)
+    _write_normalized_pitch_events(
+        pitch_events,
+        normalized_pitch_events_path,
+        game_pk=game_pk,
+        raw_sha256=raw_sha256,
+    )
 
     return GameFeedDownloadResult(
         raw_path=raw_path,

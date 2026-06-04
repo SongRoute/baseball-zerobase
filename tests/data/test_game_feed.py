@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 
 import baseball_zerobase.cli as cli
 import baseball_zerobase.data.game_feed as game_feed_module
+from baseball_zerobase.data.manifest import ManifestConflictError, manifest_path_for
 from baseball_zerobase.data.game_feed import normalize_game_feed, normalize_pitch_events
 
 
@@ -56,6 +57,42 @@ def test_normalize_pitch_events_extracts_pitch_timestamps(fixture_dir: Path) -> 
     assert events[0].completed_event_timestamp.isoformat() == "2024-04-01T23:05:14+00:00"
 
 
+def test_normalize_pitch_events_uses_play_end_time_before_pitch_start_fallback(
+    fixture_dir: Path,
+) -> None:
+    feed = load_minimal_feed(fixture_dir)
+    first_play = feed["liveData"]["plays"]["allPlays"][0]  # type: ignore[index]
+    first_pitch = first_play["playEvents"][0]  # type: ignore[index]
+    del first_pitch["endTime"]  # type: ignore[index]
+
+    events = normalize_pitch_events(feed)
+
+    assert events[0].completed_event_timestamp.isoformat() == "2024-04-01T23:07:00+00:00"
+
+
+def test_normalize_game_feed_treats_defensive_switch_as_substitution_boundary(
+    fixture_dir: Path,
+) -> None:
+    feed = load_minimal_feed(fixture_dir)
+    first_play_events = feed["liveData"]["plays"]["allPlays"][0]["playEvents"]  # type: ignore[index]
+    first_play_events.insert(
+        0,
+        {
+            "details": {
+                "event": "Defensive Switch",
+                "eventType": "defensive_switch",
+            },
+            "isPitch": False,
+            "startTime": "2024-04-01T23:05:00Z",
+            "endTime": "2024-04-01T23:05:00Z",
+        },
+    )
+
+    game = normalize_game_feed(feed)
+
+    assert game.first_substitution_at_bat == 1
+
+
 def test_download_game_feed_writes_raw_manifest_and_normalized_outputs(
     tmp_path: Path,
     fixture_dir: Path,
@@ -73,6 +110,42 @@ def test_download_game_feed_writes_raw_manifest_and_normalized_outputs(
     assert result.normalized_game_path.exists()
     assert result.normalized_pitch_events_path.exists()
     assert result.pitch_event_count == 4
+
+    game_manifest_path = manifest_path_for(result.normalized_game_path)
+    pitch_manifest_path = manifest_path_for(result.normalized_pitch_events_path)
+    assert game_manifest_path.exists()
+    assert pitch_manifest_path.exists()
+
+    game_manifest = json.loads(game_manifest_path.read_text(encoding="utf-8"))
+    pitch_manifest = json.loads(pitch_manifest_path.read_text(encoding="utf-8"))
+    raw_manifest = json.loads(result.raw_manifest_path.read_text(encoding="utf-8"))
+    assert game_manifest["source"] == "mlb-statsapi-normalized-game"
+    assert pitch_manifest["source"] == "mlb-statsapi-normalized-pitch-events"
+    assert game_manifest["request"]["game_pk"] == 12345
+    assert pitch_manifest["request"]["game_pk"] == 12345
+    assert game_manifest["request"]["raw_sha256"] == raw_manifest["sha256"]
+    assert pitch_manifest["request"]["raw_sha256"] == raw_manifest["sha256"]
+    assert game_manifest["row_count"] == 1
+    assert pitch_manifest["row_count"] == 4
+    assert game_manifest["schema_names"]
+    assert pitch_manifest["schema_names"]
+
+
+def test_download_game_feed_rejects_changed_existing_normalized_output(
+    tmp_path: Path,
+    fixture_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = load_minimal_feed(fixture_dir)
+    monkeypatch.setattr(game_feed_module, "fetch_game_feed", lambda game_pk: feed)
+    result = game_feed_module.download_game_feed(12345, tmp_path)
+
+    result.normalized_game_path.write_bytes(b"different normalized parquet")
+
+    with pytest.raises(ManifestConflictError, match="normalized game already exists"):
+        game_feed_module.download_game_feed(12345, tmp_path)
+
+    assert result.normalized_game_path.read_bytes() == b"different normalized parquet"
 
 
 def test_cli_download_games_uses_game_pk_parquet(
