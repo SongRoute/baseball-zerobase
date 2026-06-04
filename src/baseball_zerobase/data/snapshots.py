@@ -145,7 +145,7 @@ def build_snapshots(
             outs_after = 3
             runners_after = 0
         else:
-            outs_after = min(_integer(row, "outs", 0), 3)
+            outs_after = _terminal_outs_after(row)
             runners_after = _runner_bits(row)
 
         if plate_appearance_ended:
@@ -343,7 +343,7 @@ def _normalize_pitch_row(
     row: dict[str, Any],
     *,
     index: int,
-    event_lookup: dict[tuple[int, int, int], dict[str, Any]],
+    event_lookup: dict[tuple[int, int, int], dict[str, Any]] | None,
 ) -> dict[str, Any]:
     normalized = dict(row)
     normalized["game_pk"] = _integer(normalized, "game_pk", 0)
@@ -363,17 +363,21 @@ def _normalize_pitch_row(
     if "outs" not in normalized or normalized["outs"] is None:
         normalized["outs"] = 0
 
-    event = event_lookup.get(
-        (
-            _integer(normalized, "game_pk", 0),
-            _integer(normalized, "at_bat_number", 0),
-            _integer(normalized, "pitch_number", 0),
+    event = None
+    if event_lookup is not None:
+        event = event_lookup.get(
+            (
+                _integer(normalized, "game_pk", 0),
+                _integer(normalized, "at_bat_number", 0),
+                _integer(normalized, "pitch_number", 0),
+            )
         )
-    )
     if event is not None:
         normalized["pitch_timestamp"] = event["pitch_timestamp"]
         normalized["completed_event_timestamp"] = event["completed_event_timestamp"]
         normalized["timestamp_joined"] = True
+    elif event_lookup is not None:
+        normalized["timestamp_joined"] = False
     else:
         normalized["timestamp_joined"] = (
             normalized.get("pitch_timestamp") is not None
@@ -393,9 +397,11 @@ def _normalize_pitch_row(
     return normalized
 
 
-def _event_lookup(pitch_events_frame: pl.DataFrame | None) -> dict[tuple[int, int, int], dict[str, Any]]:
+def _event_lookup(
+    pitch_events_frame: pl.DataFrame | None,
+) -> dict[tuple[int, int, int], dict[str, Any]] | None:
     if pitch_events_frame is None:
-        return {}
+        return None
 
     missing = [
         key
@@ -447,6 +453,33 @@ def _terminal_reason(
     if outs_after < 3:
         return "game_end"
     return "three_outs"
+
+
+def _terminal_outs_after(row: dict[str, Any]) -> int:
+    outs_before = min(_integer(row, "outs", 0), 3)
+    normalized_event = _normalized_event(row.get("events"))
+    outcome = map_outcome(row.get("description"), row.get("events"))
+    if normalized_event in {
+        "grounded_into_double_play",
+        "double_play",
+        "strikeout_double_play",
+        "sac_fly_double_play",
+    }:
+        return 3 if outs_before >= 1 else 2
+    if normalized_event == "triple_play":
+        return 3
+    if outcome is OutcomeLabel.STRIKEOUT:
+        return min(outs_before + 1, 3)
+    if outcome is OutcomeLabel.IN_PLAY_OUT:
+        return min(outs_before + 1, 3)
+    return outs_before
+
+
+def _normalized_event(value: Any) -> str | None:
+    normalized = _string_or_none(value)
+    if normalized is None:
+        return None
+    return normalized.strip().lower().replace("-", "_")
 
 
 def _sort_key(row: dict[str, Any]) -> tuple[int, int, int, int, int]:
