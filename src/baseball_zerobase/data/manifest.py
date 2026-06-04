@@ -43,13 +43,63 @@ def manifest_path_for(data_path: Path) -> Path:
     return data_path.with_name(f"{data_path.name}.manifest.json")
 
 
-def _read_existing_sha256(path: Path) -> str | None:
+def _read_existing_manifest_payload(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
     loaded = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict) or not isinstance(loaded.get("sha256"), str):
+    if not isinstance(loaded, dict):
         raise ManifestConflictError(f"existing manifest is invalid: {path}")
-    return loaded["sha256"]
+    return loaded
+
+
+def _manifest_from_payload(
+    payload: dict[str, Any], *, data_path: Path, manifest_path: Path
+) -> RawDataManifest:
+    source = payload.get("source")
+    request = payload.get("request")
+    retrieved_at = payload.get("retrieved_at")
+    byte_size = payload.get("byte_size")
+    row_count = payload.get("row_count")
+    schema_names = payload.get("schema_names")
+    sha256 = payload.get("sha256")
+    if (
+        not isinstance(source, str)
+        or not isinstance(request, dict)
+        or not isinstance(retrieved_at, str)
+        or not isinstance(byte_size, int)
+        or not (row_count is None or isinstance(row_count, int))
+        or not (schema_names is None or isinstance(schema_names, list))
+        or not isinstance(sha256, str)
+    ):
+        raise ManifestConflictError(f"existing manifest is invalid: {manifest_path}")
+    if schema_names is not None and not all(isinstance(name, str) for name in schema_names):
+        raise ManifestConflictError(f"existing manifest is invalid: {manifest_path}")
+    return RawDataManifest(
+        source=source,
+        request=request,
+        retrieved_at=retrieved_at,
+        byte_size=byte_size,
+        row_count=row_count,
+        schema_names=schema_names,
+        sha256=sha256,
+        data_path=data_path,
+        path=manifest_path,
+    )
+
+
+def _ensure_existing_manifest_matches(
+    existing: RawDataManifest, candidate: RawDataManifest
+) -> RawDataManifest:
+    if (
+        existing.source != candidate.source
+        or existing.request != candidate.request
+        or existing.byte_size != candidate.byte_size
+        or existing.row_count != candidate.row_count
+        or existing.schema_names != candidate.schema_names
+        or existing.sha256 != candidate.sha256
+    ):
+        raise ManifestConflictError(f"manifest metadata differs for {candidate.data_path}")
+    return existing
 
 
 def write_manifest(
@@ -68,9 +118,6 @@ def write_manifest(
     if sha256 is not None and sha256 != actual_checksum:
         raise ManifestConflictError(f"supplied checksum differs from file bytes for {data_path}")
     checksum = actual_checksum
-    existing_checksum = _read_existing_sha256(manifest_path)
-    if existing_checksum is not None and existing_checksum != checksum:
-        raise ManifestConflictError(f"manifest checksum differs for {data_path}")
 
     manifest = RawDataManifest(
         source=source,
@@ -83,6 +130,13 @@ def write_manifest(
         data_path=data_path,
         path=manifest_path,
     )
+    existing_payload = _read_existing_manifest_payload(manifest_path)
+    if existing_payload is not None:
+        existing_manifest = _manifest_from_payload(
+            existing_payload, data_path=data_path, manifest_path=manifest_path
+        )
+        return _ensure_existing_manifest_matches(existing_manifest, manifest)
+
     manifest_path.write_text(
         json.dumps(manifest.to_json_dict(), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

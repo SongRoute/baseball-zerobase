@@ -1,5 +1,4 @@
 import hashlib
-import json
 
 import pytest
 
@@ -23,11 +22,45 @@ def test_manifest_allows_idempotent_rewrite_for_same_file(tmp_path) -> None:
     raw = tmp_path / "sample.bin"
     raw.write_bytes(b"immutable")
 
-    first = write_manifest(raw, source="test", request={"start": "2024-04-01"})
-    second = write_manifest(raw, source="test", request={"start": "2024-04-01"})
+    first = write_manifest(
+        raw,
+        source="test",
+        request={"start": "2024-04-01"},
+        row_count=1,
+        schema_names=["col"],
+    )
+    first_payload = first.path.read_text(encoding="utf-8")
+    second = write_manifest(
+        raw,
+        source="test",
+        request={"start": "2024-04-01"},
+        row_count=1,
+        schema_names=["col"],
+    )
 
     assert second.path == first.path
-    assert json.loads(second.path.read_text(encoding="utf-8"))["sha256"] == sha256_file(raw)
+    assert second.path.read_text(encoding="utf-8") == first_payload
+
+
+@pytest.mark.parametrize(
+    ("manifest_request", "row_count", "match"),
+    [
+        ({"start": "2024-04-02"}, 1, "manifest metadata differs"),
+        ({"start": "2024-04-01"}, 2, "manifest metadata differs"),
+    ],
+)
+def test_manifest_rejects_metadata_change_for_same_file_and_leaves_existing_manifest(
+    tmp_path, manifest_request: dict[str, str], row_count: int, match: str
+) -> None:
+    raw = tmp_path / "sample.bin"
+    raw.write_bytes(b"immutable")
+    manifest = write_manifest(raw, source="test", request={"start": "2024-04-01"}, row_count=1)
+    first_payload = manifest.path.read_text(encoding="utf-8")
+
+    with pytest.raises(ManifestConflictError, match=match):
+        write_manifest(raw, source="test", request=manifest_request, row_count=row_count)
+
+    assert manifest.path.read_text(encoding="utf-8") == first_payload
 
 
 def test_manifest_rejects_overwrite_when_checksum_differs(tmp_path) -> None:

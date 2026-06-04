@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from baseball_zerobase.data.manifest import ManifestConflictError, sha256_file
+from baseball_zerobase.data import statcast
 from baseball_zerobase.data.statcast import MissingStatcastColumnsError, download_statcast_range
 
 
@@ -115,6 +116,25 @@ def test_download_statcast_rejects_corrupted_existing_partition_with_matching_ma
 
     assert result.data_path.read_bytes() == b"corrupted partition bytes"
     assert json.loads(result.manifest_path.read_text(encoding="utf-8"))["sha256"] == manifest_checksum
+
+
+def test_install_immutable_partition_rejects_racy_existing_payload(tmp_path, monkeypatch) -> None:
+    temp_path = tmp_path / "partition.tmp"
+    data_path = tmp_path / "partition.parquet"
+    temp_path.write_bytes(b"new payload")
+    checksum = sha256_file(temp_path)
+
+    def create_racing_partition(path):
+        data_path.write_bytes(b"existing payload")
+        return None
+
+    monkeypatch.setattr(statcast, "_read_manifest_sha256", create_racing_partition)
+
+    with pytest.raises(ManifestConflictError, match="partition already exists"):
+        statcast._install_immutable_partition(temp_path, data_path, checksum)
+
+    assert data_path.read_bytes() == b"existing payload"
+    assert not temp_path.exists()
 
 
 def test_download_statcast_calls_pybaseball_with_iso_dates(tmp_path, monkeypatch) -> None:
