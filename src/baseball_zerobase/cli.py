@@ -1,11 +1,15 @@
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
+import polars as pl
 import typer
 
 from baseball_zerobase.config import Settings
 from baseball_zerobase.data.game_feed import download_games_from_parquet
+from baseball_zerobase.data.snapshots import build_snapshots, write_snapshot_dataset
+from baseball_zerobase.data.splits import DatasetRole, classify_row, require_dev_role
 from baseball_zerobase.data.statcast import download_statcast_range
+from baseball_zerobase.paths import require_dev_input
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -50,3 +54,57 @@ def download_games_command(
         f"Downloaded {len(results)} game feeds to {output_dir} "
         f"({total_pitch_events} pitch events)."
     )
+
+
+def _coerce_game_date(value: object) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value)[:10])
+
+
+def _require_dev_regular_frame(frame: pl.DataFrame, label: str) -> None:
+    missing = sorted({"game_date", "game_type"}.difference(frame.columns))
+    if missing:
+        raise typer.BadParameter(f"{label} is missing dataset role columns: {missing}")
+
+    roles = {
+        classify_row(_coerce_game_date(row["game_date"]), str(row["game_type"]))
+        for row in frame.select(["game_date", "game_type"]).iter_rows(named=True)
+    }
+    if roles != {DatasetRole.DEV_REGULAR}:
+        raise typer.BadParameter(f"{label} must contain only development regular-season rows")
+    require_dev_role(DatasetRole.DEV_REGULAR)
+
+
+@app.command("build-snapshots")
+def build_snapshots_command(
+    prepared_pitch_parquet: Path = typer.Option(...),
+    normalized_pitch_events_parquet: Path = typer.Option(...),
+    output_parquet: Path = typer.Option(
+        Path("data/processed/snapshots/role=dev_regular/snapshots.parquet")
+    ),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    pitch_path = require_dev_input(prepared_pitch_parquet, settings)
+    events_path = require_dev_input(normalized_pitch_events_parquet, settings)
+    output_path = require_dev_input(output_parquet, settings)
+
+    pitch_frame = pl.read_parquet(pitch_path)
+    _require_dev_regular_frame(pitch_frame, str(pitch_path))
+    pitch_events_frame = pl.read_parquet(events_path)
+
+    snapshots = build_snapshots(pitch_frame, pitch_events_frame)
+    manifest = write_snapshot_dataset(
+        snapshots,
+        output_path,
+        source="baseball-zerobase.snapshots",
+        request={
+            "prepared_pitch_parquet": str(pitch_path.resolve()),
+            "normalized_pitch_events_parquet": str(events_path.resolve()),
+            "role": DatasetRole.DEV_REGULAR.value,
+        },
+    )
+    typer.echo(f"Wrote {snapshots.height} snapshots to {output_path} ({manifest.path})")
