@@ -4,6 +4,7 @@ from pathlib import Path
 import typer
 
 from baseball_zerobase.config import Settings
+from baseball_zerobase.data.game_feed import download_games_from_parquet
 from baseball_zerobase.data.statcast import download_statcast_range
 
 app = typer.Typer(no_args_is_help=True)
@@ -34,3 +35,18 @@ def download_statcast_command(
     settings = load_settings(config)
     result = download_statcast_range(start, end, settings.project_root)
     typer.echo(result.data_path)
+
+
+@app.command("download-games")
+def download_games_command(
+    game_pks_parquet: Path = typer.Option(...),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    results = download_games_from_parquet(game_pks_parquet, settings.project_root)
+    output_dir = settings.project_root / "data/normalized/games"
+    total_pitch_events = sum(result.pitch_event_count for result in results)
+    typer.echo(
+        f"Downloaded {len(results)} game feeds to {output_dir} "
+        f"({total_pitch_events} pitch events)."
+    )

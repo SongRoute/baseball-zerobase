@@ -1,0 +1,188 @@
+{
+  "gamePk": 12345,
+  "gameData": {
+    "datetime": {
+      "dateTime": "2024-04-01T23:05:00Z"
+    },
+    "game": {
+      "pk": 12345,
+      "type": "R"
+    },
+    "officialDate": "2024-04-01",
+    "players": {
+      "ID501": {
+        "id": 501,
+        "pitchHand": {
+          "code": "R"
+        },
+        "batSide": {
+          "code": "R"
+        }
+      },
+      "ID601": {
+        "id": 601,
+        "pitchHand": {
+          "code": "L"
+        },
+        "batSide": {
+          "code": "L"
+        }
+      },
+      "ID101": {"id": 101, "batSide": {"code": "L"}},
+      "ID102": {"id": 102, "batSide": {"code": "R"}},
+      "ID103": {"id": 103, "batSide": {"code": "S"}},
+      "ID104": {"id": 104, "batSide": {"code": "L"}},
+      "ID105": {"id": 105, "batSide": {"code": "R"}},
+      "ID106": {"id": 106, "batSide": {"code": "L"}},
+      "ID107": {"id": 107, "batSide": {"code": "R"}},
+      "ID108": {"id": 108, "batSide": {"code": "S"}},
+      "ID109": {"id": 109, "batSide": {"code": "L"}},
+      "ID201": {"id": 201, "batSide": {"code": "R"}},
+      "ID202": {"id": 202, "batSide": {"code": "L"}},
+      "ID203": {"id": 203, "batSide": {"code": "S"}},
+      "ID204": {"id": 204, "batSide": {"code": "R"}},
+      "ID205": {"id": 205, "batSide": {"code": "L"}},
+      "ID206": {"id": 206, "batSide": {"code": "R"}},
+      "ID207": {"id": 207, "batSide": {"code": "L"}},
+      "ID208": {"id": 208, "batSide": {"code": "S"}},
+      "ID209": {"id": 209, "batSide": {"code": "R"}},
+      "ID720": {"id": 720, "batSide": {"code": "L"}}
+    },
+    "teams": {
+      "home": {
+        "id": 10
+      },
+      "away": {
+        "id": 20
+      }
+    }
+  },
+  "liveData": {
+    "boxscore": {
+      "teams": {
+        "home": {
+          "team": {
+            "id": 10
+          },
+          "pitchers": [501],
+          "batters": [101, 102, 103, 104, 105, 106, 107, 108, 109, 720],
+          "players": {
+            "ID101": {"person": {"id": 101}, "battingOrder": "100"},
+            "ID102": {"person": {"id": 102}, "battingOrder": "200"},
+            "ID103": {"person": {"id": 103}, "battingOrder": "300"},
+            "ID104": {"person": {"id": 104}, "battingOrder": "400"},
+            "ID105": {"person": {"id": 105}, "battingOrder": "500"},
+            "ID106": {"person": {"id": 106}, "battingOrder": "600"},
+            "ID107": {"person": {"id": 107}, "battingOrder": "700"},
+            "ID108": {"person": {"id": 108}, "battingOrder": "800"},
+            "ID109": {"person": {"id": 109}, "battingOrder": "900"},
+            "ID720": {"person": {"id": 720}, "battingOrder": "101"}
+          }
+        },
+        "away": {
+          "team": {
+            "id": 20
+          },
+          "pitchers": [601],
+          "batters": [201, 202, 203, 204, 205, 206, 207, 208, 209],
+          "players": {
+            "ID201": {"person": {"id": 201}, "battingOrder": "100"},
+            "ID202": {"person": {"id": 202}, "battingOrder": "200"},
+            "ID203": {"person": {"id": 203}, "battingOrder": "300"},
+            "ID204": {"person": {"id": 204}, "battingOrder": "400"},
+            "ID205": {"person": {"id": 205}, "battingOrder": "500"},
+            "ID206": {"person": {"id": 206}, "battingOrder": "600"},
+            "ID207": {"person": {"id": 207}, "battingOrder": "700"},
+            "ID208": {"person": {"id": 208}, "battingOrder": "800"},
+            "ID209": {"person": {"id": 209}, "battingOrder": "900"}
+          }
+        }
+      }
+    },
+    "plays": {
+      "allPlays": [
+        {
+          "atBatIndex": 0,
+          "about": {
+            "atBatIndex": 0,
+            "halfInning": "top",
+            "startTime": "2024-04-01T23:05:00Z",
+            "endTime": "2024-04-01T23:07:00Z"
+          },
+          "matchup": {
+            "batter": {
+              "id": 201
+            }
+          },
+          "playEvents": [
+            {
+              "isPitch": true,
+              "pitchNumber": 1,
+              "startTime": "2024-04-01T23:05:10Z",
+              "endTime": "2024-04-01T23:05:14Z"
+            },
+            {
+              "isPitch": true,
+              "pitchNumber": 2,
+              "startTime": "2024-04-01T23:05:35Z",
+              "endTime": "2024-04-01T23:05:39Z"
+            }
+          ]
+        },
+        {
+          "atBatIndex": 1,
+          "about": {
+            "atBatIndex": 1,
+            "halfInning": "bottom",
+            "startTime": "2024-04-01T23:15:00Z",
+            "endTime": "2024-04-01T23:17:00Z"
+          },
+          "matchup": {
+            "batter": {
+              "id": 101
+            }
+          },
+          "playEvents": [
+            {
+              "isPitch": true,
+              "pitchNumber": 1,
+              "startTime": "2024-04-01T23:15:10Z",
+              "endTime": "2024-04-01T23:15:14Z"
+            }
+          ]
+        },
+        {
+          "atBatIndex": 2,
+          "about": {
+            "atBatIndex": 2,
+            "halfInning": "bottom",
+            "startTime": "2024-04-01T23:20:00Z",
+            "endTime": "2024-04-01T23:22:00Z"
+          },
+          "matchup": {
+            "batter": {
+              "id": 720
+            }
+          },
+          "playEvents": [
+            {
+              "details": {
+                "event": "Pinch-hitter",
+                "eventType": "offensive_substitution"
+              },
+              "isPitch": false,
+              "startTime": "2024-04-01T23:20:00Z",
+              "endTime": "2024-04-01T23:20:00Z"
+            },
+            {
+              "isPitch": true,
+              "pitchNumber": 1,
+              "startTime": "2024-04-01T23:20:10Z",
+              "endTime": "2024-04-01T23:20:14Z"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
