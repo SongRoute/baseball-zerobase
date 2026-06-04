@@ -1,0 +1,18 @@
+project:
+  name: baseball-zerobase
+  version: 0.1.0
+
+scope:
+  league: MLB
+  player_role: starting_pitcher
+  excludes:
+    - bullpen_recommendation
+    - neural_model
+    - recommendation_engine
+    - api
+    - web_ui
+
+paths:
+  data: data
+  artifacts: artifacts
+  reports: reports/generated
