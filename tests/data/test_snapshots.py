@@ -1,8 +1,16 @@
-from datetime import datetime
+from datetime import date, datetime
+import json
+from pathlib import Path
 
 import polars as pl
+import pytest
 
-from baseball_zerobase.data.snapshots import build_snapshots
+from baseball_zerobase.data.manifest import ManifestConflictError, sha256_file
+from baseball_zerobase.data.snapshots import (
+    build_development_dataset,
+    build_snapshots,
+    write_snapshot_dataset,
+)
 
 
 def test_snapshot_uses_only_pre_pitch_state(prepared_pitch_frame) -> None:
@@ -71,3 +79,84 @@ def test_missing_normalized_pitch_event_is_preserved_as_unjoined() -> None:
     snapshots = build_snapshots(pitch_frame, events_frame)
 
     assert snapshots.row(0, named=True)["timestamp_joined"] is False
+
+
+def test_snapshot_dataset_conflict_leaves_existing_data_and_manifest(
+    tmp_path: Path,
+) -> None:
+    first_snapshots = pl.DataFrame({"game_pk": [1], "pitch_number": [1]})
+    second_snapshots = pl.DataFrame({"game_pk": [99], "pitch_number": [1]})
+    output_path = tmp_path / "snapshots.parquet"
+
+    first_manifest = write_snapshot_dataset(
+        first_snapshots,
+        output_path,
+        source="test-snapshots",
+        request={"game_pk": 1},
+    )
+    original_bytes = output_path.read_bytes()
+    original_manifest_payload = json.loads(first_manifest.path.read_text(encoding="utf-8"))
+
+    with pytest.raises(ManifestConflictError):
+        write_snapshot_dataset(
+            second_snapshots,
+            output_path,
+            source="test-snapshots",
+            request={"game_pk": 99},
+        )
+
+    assert output_path.read_bytes() == original_bytes
+    assert json.loads(first_manifest.path.read_text(encoding="utf-8")) == original_manifest_payload
+    assert original_manifest_payload["sha256"] == sha256_file(output_path)
+
+
+def test_joined_pitch_is_unavailable_when_as_of_timestamp_uses_unjoined_previous_pitch() -> None:
+    pitch_frame = pl.DataFrame(
+        {
+            "game_pk": [12345, 12345],
+            "game_date": [date(2024, 4, 1), date(2024, 4, 1)],
+            "game_type": ["R", "R"],
+            "at_bat_number": [1, 1],
+            "pitch_number": [1, 2],
+            "inning": [1, 1],
+            "inning_topbot": ["Top", "Top"],
+            "pitch_timestamp": [
+                datetime(2024, 4, 1, 23, 5, 10),
+                datetime(2024, 4, 1, 23, 5, 30),
+            ],
+            "completed_event_timestamp": [
+                datetime(2024, 4, 1, 23, 5, 12),
+                datetime(2024, 4, 1, 23, 5, 32),
+            ],
+            "game_start_timestamp": [
+                datetime(2024, 4, 1, 23, 0),
+                datetime(2024, 4, 1, 23, 0),
+            ],
+            "is_official_starter_pitch": [True, True],
+            "lineup_stable": [True, True],
+            "pitch_type": ["FF", "FF"],
+            "relative_zone": ["middle_middle", "middle_middle"],
+            "description": ["ball", "called_strike"],
+            "events": [None, None],
+        }
+    )
+    events_frame = pl.DataFrame(
+        {
+            "game_pk": [12345],
+            "at_bat_number": [1],
+            "pitch_number": [2],
+            "pitch_timestamp": [datetime(2024, 4, 1, 23, 5, 30)],
+            "completed_event_timestamp": [datetime(2024, 4, 1, 23, 5, 32)],
+        }
+    )
+
+    snapshots = build_snapshots(pitch_frame, events_frame)
+    second = snapshots.row(1, named=True)
+
+    assert second["as_of_timestamp"] == datetime(2024, 4, 1, 23, 5, 12)
+    assert second["timestamp_joined"] is False
+    eligible = snapshots.with_columns(pl.lit(True).alias("starter_eligible"))
+    dataset = build_development_dataset(eligible)
+    assert dataset.frame.is_empty()
+    assert dataset.filter_counts["non_null_action_rows"] == 2
+    assert dataset.filter_counts["timestamp_joined_rows"] == 0

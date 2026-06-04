@@ -285,14 +285,30 @@ def write_snapshot_dataset(
 ) -> RawDataManifest:
     output_path = output_path.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    snapshots.write_parquet(output_path)
-    return write_manifest(
-        output_path,
-        source=source,
-        request=request,
-        row_count=snapshots.height,
-        schema_names=snapshots.columns,
-    )
+    with tempfile.NamedTemporaryFile(
+        prefix=f"{output_path.name}.",
+        suffix=".tmp",
+        dir=output_path.parent,
+        delete=False,
+    ) as temp_file:
+        temp_path = Path(temp_file.name)
+
+    try:
+        snapshots.write_parquet(temp_path)
+        checksum = sha256_file(temp_path)
+        _install_immutable_parquet(temp_path, output_path, checksum, "snapshot dataset")
+        return write_manifest(
+            output_path,
+            source=source,
+            request=request,
+            row_count=snapshots.height,
+            schema_names=snapshots.columns,
+            sha256=checksum,
+        )
+    except Exception:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
 
 
 def write_development_dataset(
@@ -400,14 +416,21 @@ def _prepared_rows(
         for index, row in enumerate(pitch_frame.iter_rows(named=True))
     ]
 
-    previous_completed_by_game: dict[int, datetime] = {}
+    previous_completed_by_game: dict[int, tuple[datetime, bool]] = {}
     for row in sorted(raw_rows, key=_sort_key):
         game_pk = _integer(row, "game_pk", 0)
         game_start = _datetime(row.get("game_start_timestamp") or _EPOCH)
         pitch_timestamp = _datetime(row["pitch_timestamp"])
         completed_timestamp = _datetime(row["completed_event_timestamp"])
-        row["as_of_timestamp"] = previous_completed_by_game.get(game_pk, game_start)
-        previous_completed_by_game[game_pk] = completed_timestamp
+        completed_timestamp_joined = bool(row["timestamp_joined"])
+        previous_completed = previous_completed_by_game.get(game_pk)
+        if previous_completed is None:
+            row["as_of_timestamp"] = game_start
+        else:
+            row["as_of_timestamp"], previous_completed_joined = previous_completed
+            if not previous_completed_joined:
+                row["timestamp_joined"] = False
+        previous_completed_by_game[game_pk] = (completed_timestamp, completed_timestamp_joined)
         if row["as_of_timestamp"] >= pitch_timestamp and not bool(row["timestamp_joined"]):
             row["as_of_timestamp"] = pitch_timestamp - timedelta(microseconds=1)
         sortable_rows.append(row)
