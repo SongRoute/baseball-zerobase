@@ -7,8 +7,10 @@ _TERMINAL_OUTCOMES: dict[str, OutcomeLabel] = {
     "triple": OutcomeLabel.TRIPLE,
     "home_run": OutcomeLabel.HOME_RUN,
     "walk": OutcomeLabel.WALK,
+    "intent_walk": OutcomeLabel.WALK,
     "hit_by_pitch": OutcomeLabel.HBP,
     "strikeout": OutcomeLabel.STRIKEOUT,
+    "strikeout_double_play": OutcomeLabel.STRIKEOUT,
 }
 
 _IN_PLAY_OUT_EVENTS = {
@@ -18,6 +20,7 @@ _IN_PLAY_OUT_EVENTS = {
     "double_play",
     "triple_play",
     "sac_fly",
+    "sac_fly_double_play",
     "sac_bunt",
     "fielders_choice_out",
 }

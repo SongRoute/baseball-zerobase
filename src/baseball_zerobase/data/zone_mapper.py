@@ -23,7 +23,7 @@ def map_relative_zone(
     if top <= bottom:
         return None
 
-    relative_x = x if normalized_stand == "R" else -x
+    relative_x = -x if normalized_stand == "R" else x
 
     if z > top:
         return RelativeZone.CHASE_HIGH

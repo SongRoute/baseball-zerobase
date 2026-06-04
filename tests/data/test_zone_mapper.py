@@ -5,10 +5,31 @@ from baseball_zerobase.data.zone_mapper import map_relative_zone
 
 
 def test_zone_mirrors_inside_and_away_by_batter_hand() -> None:
-    right = map_relative_zone(plate_x=0.60, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="R")
-    left = map_relative_zone(plate_x=-0.60, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="L")
+    right = map_relative_zone(plate_x=-0.60, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="R")
+    left = map_relative_zone(plate_x=0.60, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="L")
     assert right is RelativeZone.MIDDLE_INSIDE
     assert left is RelativeZone.MIDDLE_INSIDE
+
+
+def test_zone_mirrors_away_by_batter_hand() -> None:
+    right = map_relative_zone(plate_x=0.60, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="R")
+    left = map_relative_zone(plate_x=-0.60, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="L")
+    assert right is RelativeZone.MIDDLE_AWAY
+    assert left is RelativeZone.MIDDLE_AWAY
+
+
+def test_chase_inside_mirrors_by_batter_hand() -> None:
+    right = map_relative_zone(plate_x=-1.20, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="R")
+    left = map_relative_zone(plate_x=1.20, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="L")
+    assert right is RelativeZone.CHASE_INSIDE
+    assert left is RelativeZone.CHASE_INSIDE
+
+
+def test_chase_away_mirrors_by_batter_hand() -> None:
+    right = map_relative_zone(plate_x=1.20, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="R")
+    left = map_relative_zone(plate_x=-1.20, plate_z=2.50, sz_bot=1.50, sz_top=3.50, stand="L")
+    assert right is RelativeZone.CHASE_AWAY
+    assert left is RelativeZone.CHASE_AWAY
 
 
 def test_vertical_chase_takes_precedence_at_corner() -> None:

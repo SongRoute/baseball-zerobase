@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RelativeZone(StrEnum):
@@ -44,14 +44,14 @@ class OutcomeLabel(StrEnum):
 
 
 class TransitionAtom(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, strict=True)
 
     outcome: OutcomeLabel
-    balls_after: int
-    strikes_after: int
-    outs_after: int
+    balls_after: int = Field(ge=0, le=3)
+    strikes_after: int = Field(ge=0, le=2)
+    outs_after: int = Field(ge=0, le=3)
     runners_after: tuple[bool, bool, bool]
-    runs_scored: int
+    runs_scored: int = Field(ge=0)
     plate_appearance_ended: bool
     half_inning_ended: bool
     terminal_reason: str | None
