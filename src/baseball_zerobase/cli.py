@@ -5,8 +5,14 @@ import polars as pl
 import typer
 
 from baseball_zerobase.config import Settings
+from baseball_zerobase.data.eligibility import add_starter_eligibility
 from baseball_zerobase.data.game_feed import download_games_from_parquet
-from baseball_zerobase.data.snapshots import build_snapshots, write_snapshot_dataset
+from baseball_zerobase.data.snapshots import (
+    build_development_dataset,
+    build_snapshots,
+    write_development_dataset,
+    write_snapshot_dataset,
+)
 from baseball_zerobase.data.splits import DatasetRole, classify_row, require_dev_role
 from baseball_zerobase.data.statcast import download_statcast_range
 from baseball_zerobase.paths import require_dev_input
@@ -108,3 +114,38 @@ def build_snapshots_command(
         },
     )
     typer.echo(f"Wrote {snapshots.height} snapshots to {output_path} ({manifest.path})")
+
+
+@app.command("build-dev-dataset")
+def build_dev_dataset_command(
+    snapshots_parquet: Path = typer.Option(...),
+    output_parquet: Path = typer.Option(
+        Path("data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet")
+    ),
+    min_prior_pitches: int | None = typer.Option(None),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    snapshots_path = require_dev_input(snapshots_parquet, settings)
+    output_path = require_dev_input(output_parquet, settings)
+
+    snapshots = pl.read_parquet(snapshots_path)
+    _require_dev_regular_frame(snapshots, str(snapshots_path))
+    eligibility_threshold = min_prior_pitches or settings.starter.prior_two_season_pitches
+    eligible_snapshots = add_starter_eligibility(
+        snapshots,
+        min_prior_pitches=eligibility_threshold,
+    )
+    dataset = build_development_dataset(eligible_snapshots)
+    manifest = write_development_dataset(
+        dataset,
+        output_path,
+        source="baseball-zerobase.dev-dataset",
+        request={
+            "snapshots_parquet": str(snapshots_path.resolve()),
+            "role": DatasetRole.DEV_REGULAR.value,
+            "min_prior_pitches": eligibility_threshold,
+        },
+        input_paths={"snapshots": snapshots_path},
+    )
+    typer.echo(f"Wrote {dataset.frame.height} development rows to {output_path} ({manifest.path})")

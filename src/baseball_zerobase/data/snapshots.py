@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 
-from baseball_zerobase.data.contracts import RelativeZone
-from baseball_zerobase.data.manifest import RawDataManifest, write_manifest
+from baseball_zerobase.data.contracts import OutcomeLabel, RelativeZone
+from baseball_zerobase.data.manifest import RawDataManifest, sha256_file, write_manifest
 from baseball_zerobase.data.outcomes import map_outcome
+from baseball_zerobase.data.splits import DatasetRole, classify_row
 from baseball_zerobase.data.zone_mapper import map_relative_zone
 
 SNAPSHOT_COLUMNS = [
@@ -39,6 +41,9 @@ SNAPSHOT_COLUMNS = [
     "timestamp_joined",
     "pitch_type",
     "relative_zone",
+    "action",
+    "description",
+    "events",
     "as_of_timestamp",
     "outcome",
     "balls_after",
@@ -79,6 +84,9 @@ SNAPSHOT_SCHEMA: dict[str, Any] = {
     "timestamp_joined": pl.Boolean,
     "pitch_type": pl.String,
     "relative_zone": pl.String,
+    "action": pl.String,
+    "description": pl.String,
+    "events": pl.String,
     "as_of_timestamp": pl.Datetime,
     "outcome": pl.String,
     "balls_after": pl.Int64,
@@ -93,6 +101,21 @@ SNAPSHOT_SCHEMA: dict[str, Any] = {
 
 _JOIN_KEYS = ["game_pk", "at_bat_number", "pitch_number"]
 _EPOCH = datetime(1970, 1, 1)
+_AUTOMATIC_OR_INTENTIONAL_LABELS = {
+    "automatic_ball",
+    "automatic_strike",
+    "intent_ball",
+    "intent_walk",
+    "intentional_ball",
+    "intentional_walk",
+}
+_SUPPORTED_OUTCOMES = {label.value for label in OutcomeLabel} - {OutcomeLabel.OTHER.value}
+
+
+@dataclass(frozen=True)
+class DevelopmentDataset:
+    frame: pl.DataFrame
+    filter_counts: dict[str, int]
 
 
 def build_snapshots(
@@ -150,6 +173,8 @@ def build_snapshots(
                 f"pitch_timestamp for {tuple(row[key] for key in _JOIN_KEYS)}"
             )
 
+        pitch_type = _string_or_none(row.get("pitch_type"))
+        relative_zone = _relative_zone_value(row)
         snapshots.append(
             {
                 "game_pk": row["game_pk"],
@@ -177,8 +202,11 @@ def build_snapshots(
                 "is_official_starter_pitch": bool(row.get("is_official_starter_pitch") or False),
                 "lineup_stands": _list_or_none(row.get("lineup_stands")),
                 "timestamp_joined": timestamp_joined,
-                "pitch_type": _string_or_none(row.get("pitch_type")),
-                "relative_zone": _relative_zone_value(row),
+                "pitch_type": pitch_type,
+                "relative_zone": relative_zone,
+                "action": _action_value(pitch_type, relative_zone),
+                "description": _string_or_none(row.get("description")),
+                "events": _string_or_none(row.get("events")),
                 "as_of_timestamp": as_of_timestamp,
                 "outcome": str(map_outcome(row.get("description"), row.get("events"))),
                 "balls_after": balls_after,
@@ -200,6 +228,45 @@ def build_snapshots(
     return pl.DataFrame(snapshots, schema=SNAPSHOT_SCHEMA).select(SNAPSHOT_COLUMNS)
 
 
+def build_development_dataset(snapshots: pl.DataFrame) -> DevelopmentDataset:
+    _require_columns(
+        snapshots,
+        [
+            "game_date",
+            "game_type",
+            "is_official_starter_pitch",
+            "lineup_stable",
+            "starter_eligible",
+            "timestamp_joined",
+            "outcome",
+        ],
+        "development dataset snapshots",
+    )
+
+    filtered = snapshots.with_columns(
+        pl.Series("dataset_role", _dataset_roles(snapshots), dtype=pl.String),
+        _action_filter_expr(snapshots).alias("_has_action"),
+        _supported_event_expr(snapshots).alias("_supported_strategic_event"),
+    )
+    filter_counts = {"input_rows": filtered.height}
+    for name, expression in [
+        ("dev_regular_rows", pl.col("dataset_role") == DatasetRole.DEV_REGULAR.value),
+        ("official_starter_pitch_rows", pl.col("is_official_starter_pitch").fill_null(False)),
+        ("stable_lineup_rows", pl.col("lineup_stable").fill_null(False)),
+        ("starter_eligible_rows", pl.col("starter_eligible").fill_null(False)),
+        ("non_null_action_rows", pl.col("_has_action")),
+        ("timestamp_joined_rows", pl.col("timestamp_joined").fill_null(False)),
+        ("supported_strategic_event_rows", pl.col("_supported_strategic_event")),
+    ]:
+        filtered = filtered.filter(expression)
+        filter_counts[name] = filtered.height
+
+    return DevelopmentDataset(
+        frame=filtered.drop(["dataset_role", "_has_action", "_supported_strategic_event"]),
+        filter_counts=filter_counts,
+    )
+
+
 def write_snapshot_dataset(
     snapshots: pl.DataFrame,
     output_path: Path,
@@ -216,6 +283,34 @@ def write_snapshot_dataset(
         request=request,
         row_count=snapshots.height,
         schema_names=snapshots.columns,
+    )
+
+
+def write_development_dataset(
+    dataset: DevelopmentDataset,
+    output_path: Path,
+    *,
+    source: str,
+    request: dict[str, Any],
+    input_paths: dict[str, Path],
+) -> RawDataManifest:
+    output_path = output_path.resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset.frame.write_parquet(output_path)
+    input_checksums = {
+        label: sha256_file(path.resolve()) for label, path in sorted(input_paths.items())
+    }
+    manifest_request = {
+        **request,
+        "input_checksums": input_checksums,
+        "filter_counts": dataset.filter_counts,
+    }
+    return write_manifest(
+        output_path,
+        source=source,
+        request=manifest_request,
+        row_count=dataset.frame.height,
+        schema_names=dataset.frame.columns,
     )
 
 
@@ -399,6 +494,65 @@ def _relative_zone_value(row: dict[str, Any]) -> str | None:
     if isinstance(mapped, RelativeZone):
         return mapped.value
     return str(mapped)
+
+
+def _action_value(pitch_type: str | None, relative_zone: str | None) -> str | None:
+    if pitch_type is None or relative_zone is None:
+        return None
+    return f"{pitch_type}:{relative_zone}"
+
+
+def _require_columns(frame: pl.DataFrame, columns: list[str], label: str) -> None:
+    missing = sorted(set(columns).difference(frame.columns))
+    if missing:
+        raise ValueError(f"{label} is missing columns: {missing}")
+
+
+def _dataset_roles(frame: pl.DataFrame) -> list[str]:
+    roles: list[str] = []
+    for row in frame.select(["game_date", "game_type"]).iter_rows(named=True):
+        game_date = _date_or_none(row["game_date"])
+        if game_date is None:
+            raise ValueError("development dataset snapshots contain null game_date")
+        roles.append(classify_row(game_date, str(row["game_type"])).value)
+    return roles
+
+
+def _action_filter_expr(frame: pl.DataFrame) -> pl.Expr:
+    if "action" in frame.columns:
+        return _non_empty_string("action")
+    _require_columns(frame, ["pitch_type", "relative_zone"], "development dataset action")
+    return _non_empty_string("pitch_type") & _non_empty_string("relative_zone")
+
+
+def _supported_event_expr(frame: pl.DataFrame) -> pl.Expr:
+    expression = pl.col("outcome").is_in(sorted(_SUPPORTED_OUTCOMES))
+    for column in ("description", "events"):
+        if column in frame.columns:
+            expression = expression & ~_excluded_label_expr(column)
+    return expression.fill_null(False)
+
+
+def _non_empty_string(column: str) -> pl.Expr:
+    return (pl.col(column).is_not_null() & (pl.col(column).cast(pl.String).str.len_chars() > 0)).fill_null(
+        False
+    )
+
+
+def _normalized_label(column: str) -> pl.Expr:
+    return (
+        pl.col(column)
+        .cast(pl.String)
+        .str.strip_chars()
+        .str.to_lowercase()
+        .str.replace_all("-", "_")
+    )
+
+
+def _excluded_label_expr(column: str) -> pl.Expr:
+    return _normalized_label(column).is_in(sorted(_AUTOMATIC_OR_INTENTIONAL_LABELS)).fill_null(
+        False
+    )
 
 
 def _integer(row: dict[str, Any], key: str, default: int) -> int:
