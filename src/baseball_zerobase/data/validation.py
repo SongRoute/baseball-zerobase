@@ -220,7 +220,7 @@ def _reject_count_domains(frame: pl.DataFrame) -> None:
     domains = {
         "balls": (0, 3),
         "balls_after": (0, 3),
-        "outs": (0, 3),
+        "outs": (0, 2),
         "outs_after": (0, 3),
         "runners": (0, 7),
         "runners_after": (0, 7),

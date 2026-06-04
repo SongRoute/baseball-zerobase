@@ -117,6 +117,11 @@ def test_audit_rejects_duplicate_pitch_keys(valid_snapshot_frame: pl.DataFrame) 
             "strikes",
         ),
         (
+            "impossible pre-pitch three outs",
+            lambda frame: frame.with_columns(_replace_row("outs", 0, 3)),
+            "outs",
+        ),
+        (
             "invalid outs",
             lambda frame: frame.with_columns(_replace_row("outs", 0, 4)),
             "outs",
