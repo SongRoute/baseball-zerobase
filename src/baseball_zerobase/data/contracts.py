@@ -38,7 +38,7 @@ class OutcomeLabel(StrEnum):
     HOME_RUN = "home_run"
     WALK = "walk"
     STRIKEOUT = "strikeout"
-    HBP = "hbp"
+    HBP = "hit_by_pitch"
     REACH_OTHER = "reach_other"
     OTHER = "other"
 
