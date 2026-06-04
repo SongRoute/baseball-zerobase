@@ -48,6 +48,7 @@ class _TransitionModel(Protocol):
 class InningSimulationResult:
     runs: tuple[int, ...]
     pitch_counts: tuple[int, ...]
+    final_score_diffs: tuple[int, ...]
     zero_run_probability: float
     two_plus_run_probability: float
     truncated_trials: int
@@ -57,6 +58,7 @@ class InningSimulationResult:
 class _TrialResult:
     runs: int
     pitch_count: int
+    final_score_diff: int
     truncated: bool
 
 
@@ -92,9 +94,11 @@ class InningSimulator:
         )
         runs = tuple(result.runs for result in trial_results)
         pitch_counts = tuple(result.pitch_count for result in trial_results)
+        final_score_diffs = tuple(result.final_score_diff for result in trial_results)
         return InningSimulationResult(
             runs=runs,
             pitch_counts=pitch_counts,
+            final_score_diffs=final_score_diffs,
             zero_run_probability=_mean(runs_array == 0)
             if (runs_array := np.asarray(runs, dtype=np.int_)).size
             else 0.0,
@@ -148,6 +152,7 @@ class InningSimulator:
         return _TrialResult(
             runs=runs,
             pitch_count=pitch_count,
+            final_score_diff=state.score_diff,
             truncated=not terminated,
         )
 
@@ -159,7 +164,7 @@ def _apply_transition(state: GameState, atom: TransitionAtom) -> GameState:
         strikes=atom.strikes_after,
         outs=atom.outs_after,
         runners=_runners_to_mask(atom.runners_after),
-        score_diff=state.score_diff + atom.runs_scored,
+        score_diff=state.score_diff - atom.runs_scored,
     )
     if atom.plate_appearance_ended:
         return next_state.advance_batting_order()

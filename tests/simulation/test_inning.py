@@ -70,6 +70,56 @@ def test_invalid_transition_that_decreases_outs_is_rejected() -> None:
         simulator.simulate_many(_initial_state(outs=1), trials=1, seed=1)
 
 
+def test_score_diff_decreases_when_batting_team_scores() -> None:
+    simulator = InningSimulator(
+        SequencedBehaviorModel([("FF", "middle_middle")]),
+        SequenceTransitionModel(
+            [_single_atom(runs_scored=1), _out_atom(1), _out_atom(2), _out_atom(3, half_inning_ended=True)]
+        ),
+        max_pitches=10,
+    )
+
+    result = simulator.simulate_many(_initial_state(score_diff=2), trials=1, seed=1)
+
+    assert result.runs == (1,)
+    assert result.final_score_diffs == (1,)
+
+
+def test_max_pitches_reports_truncation() -> None:
+    simulator = InningSimulator(
+        SequencedBehaviorModel([("FF", "middle_middle")]),
+        SequenceTransitionModel([_called_strike_atom()]),
+        max_pitches=2,
+    )
+
+    result = simulator.simulate_many(_initial_state(), trials=3, seed=3)
+
+    assert result.pitch_counts == (2, 2, 2)
+    assert result.truncated_trials == 3
+
+
+def test_non_terminal_count_decrease_is_rejected() -> None:
+    simulator = InningSimulator(
+        SequencedBehaviorModel([("FF", "middle_middle")]),
+        SequenceTransitionModel([_called_strike_atom(strikes_after=0)]),
+        max_pitches=10,
+    )
+
+    with pytest.raises(ValueError, match="decrease strikes"):
+        simulator.simulate_many(_initial_state(strikes=1), trials=1, seed=1)
+
+
+def test_runner_tuple_shape_violation_is_rejected() -> None:
+    simulator = InningSimulator(
+        SequencedBehaviorModel([("FF", "middle_middle")]),
+        SequenceTransitionModel([_invalid_runner_atom()]),
+        max_pitches=10,
+    )
+
+    with pytest.raises(ValueError, match="runners_after"):
+        simulator.simulate_many(_initial_state(), trials=1, seed=1)
+
+
 class SequencedBehaviorModel:
     def __init__(self, actions: list[tuple[str, str]]) -> None:
         self._actions = actions
@@ -165,14 +215,14 @@ class RandomRunTransitionModel:
         return _out_atom(outs + 1, runs_scored=runs, half_inning_ended=outs + 1 >= 3)
 
 
-def _initial_state(*, outs: int = 0) -> GameState:
+def _initial_state(*, outs: int = 0, strikes: int = 0, score_diff: int = 0) -> GameState:
     return GameState(
         balls=0,
-        strikes=0,
+        strikes=strikes,
         outs=outs,
         runners=0,
         inning=1,
-        score_diff=0,
+        score_diff=score_diff,
         batting_order_index=0,
         lineup_ids=(10, 20, 30),
         lineup_stands=("R", "L", "R"),
@@ -181,8 +231,36 @@ def _initial_state(*, outs: int = 0) -> GameState:
     )
 
 
-def _called_strike_atom() -> TransitionAtom:
+def _called_strike_atom(*, strikes_after: int = 1) -> TransitionAtom:
     return TransitionAtom(
+        outcome=OutcomeLabel.CALLED_STRIKE,
+        balls_after=0,
+        strikes_after=strikes_after,
+        outs_after=0,
+        runners_after=(False, False, False),
+        runs_scored=0,
+        plate_appearance_ended=False,
+        half_inning_ended=False,
+        terminal_reason=None,
+    )
+
+
+def _single_atom(*, runs_scored: int = 0) -> TransitionAtom:
+    return TransitionAtom(
+        outcome=OutcomeLabel.SINGLE,
+        balls_after=0,
+        strikes_after=0,
+        outs_after=0,
+        runners_after=(True, False, False),
+        runs_scored=runs_scored,
+        plate_appearance_ended=True,
+        half_inning_ended=False,
+        terminal_reason=None,
+    )
+
+
+def _invalid_runner_atom() -> TransitionAtom:
+    atom = TransitionAtom(
         outcome=OutcomeLabel.CALLED_STRIKE,
         balls_after=0,
         strikes_after=1,
@@ -193,6 +271,8 @@ def _called_strike_atom() -> TransitionAtom:
         half_inning_ended=False,
         terminal_reason=None,
     )
+    object.__setattr__(atom, "runners_after", (False, False))
+    return atom
 
 
 def _out_atom(
