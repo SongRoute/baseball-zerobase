@@ -12,5 +12,7 @@ data/processed/
 *.pt
 *.pkl
 # 검증 리포트는 추적 (results/*.md 는 제외 안 함)
+# Codex harness 임시 실행 로그
+phases/*/step*-attempt*-output.json
 # macOS
 .DS_Store
