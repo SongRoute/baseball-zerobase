@@ -5,8 +5,10 @@ from typing import Any
 import pytest
 
 from baseball_zerobase.data.contracts import OutcomeLabel, TransitionAtom
+from baseball_zerobase.models.transition import SharedTransitionModelV0
 from baseball_zerobase.simulation.inning import InningSimulator
 from baseball_zerobase.simulation.state import GameState
+from tests.models.transition_fixtures import transition_training_frame
 
 
 def test_same_seed_produces_same_run_distribution() -> None:
@@ -125,6 +127,22 @@ def test_runner_tuple_shape_violation_is_rejected() -> None:
 
     with pytest.raises(ValueError, match="runners_after"):
         simulator.simulate_many(_initial_state(), trials=1, seed=1)
+
+
+def test_shared_transition_model_is_simulator_compatible() -> None:
+    transition_model = SharedTransitionModelV0(min_support=1, prior_weight=1.0).fit(
+        transition_training_frame(),
+        training_manifest_hash="synthetic:m4",
+    )
+    simulator = InningSimulator(
+        SequencedBehaviorModel([("FF", "middle_middle")]),
+        transition_model,
+        max_pitches=5,
+    )
+
+    result = simulator.simulate_many(_initial_state(), trials=3, seed=7)
+
+    assert len(result.runs) == 3
 
 
 class SequencedBehaviorModel:

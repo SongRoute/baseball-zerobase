@@ -4,11 +4,12 @@ Baseball Zerobase는 누수 방지 MLB 선발투수 전략 연구 파이프라�
 클린룸 재작성 프로젝트입니다. 이 저장소는 이전 프로젝트의 코드, 모델 가중치,
 또는 처리된 데이터를 사용하면 안 됩니다.
 
-Milestone 1-3의 범위는 데이터 기반, 경험적 베이스라인, 결정론적 개인화 feature를
-포함합니다: 불변 원천 데이터 수집, 선발투수와 라인업 맥락, 투구 전 스냅샷,
-as-of 선발 자격, 투수 프로필, 타자 약점 유형, 타자 위협도, 당일 누적 상태,
-경험적 행동 및 전이 베이스라인, 이닝 시뮬레이션, 롤링 검증을 포함합니다. 신경망
-모델, 추천, API 서빙, 웹 UI는 범위 밖입니다.
+Milestone 1-4의 범위는 데이터 기반, 경험적 베이스라인, 결정론적 개인화 feature,
+계약 우선 공유 전이모델을 포함합니다: 불변 원천 데이터 수집, 선발투수와 라인업
+맥락, 투구 전 스냅샷, as-of 선발 자격, 투수 프로필, 타자 약점 유형, 타자 위협도,
+당일 누적 상태, 경험적 행동 및 전이 베이스라인, 이닝 시뮬레이션, 롤링 검증,
+합법 전이 확률분포를 포함합니다. 신경망 모델, 추천, API 서빙, 웹 UI는 범위
+밖입니다.
 
 ## 데이터 파티션
 
@@ -120,6 +121,15 @@ uv run baseball-zerobase validate-dataset \
 uv run baseball-zerobase evaluate-rolling \
   --dataset data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
   --output-dir reports/generated/rolling
+
+uv run baseball-zerobase fit-transition-model \
+  --dataset data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
+  --output artifacts/models/transition/v0.json
+
+uv run baseball-zerobase evaluate-transition-model \
+  --dataset data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
+  --model artifacts/models/transition/v0.json \
+  --report reports/generated/transition/v0.json
 ```
 
 `prepared_pitch.parquet`에는 선발투수와 안정 라인업 맥락이 연결된 개발 정규시즌
@@ -135,6 +145,14 @@ proxy를 사용합니다. 당일 누적 상태는 target pitch 이전의 같은 
 
 각 Milestone 3 feature family는 `*_as_of_timestamp` 열을 씁니다. 검증은 feature
 timestamp가 비어 있거나 target `pitch_timestamp`보다 엄격히 이전이 아니면 거부합니다.
+
+## 공유 전이모델
+
+Milestone 4는 결정론적 공유 전이모델 v0를 추가합니다. 이 모델은 개발 전용 전이
+count를 smoothing하고, target label column을 model feature에서 제외하며, 정규화된
+합법 `TransitionAtom` 확률분포를 출력하고, 이닝 시뮬레이터에서 직접 사용할 수
+있습니다. 구성요소 평가는 전이 log loss, calibration error, rare outcome recall,
+한글 요약을 보고합니다.
 
 ## 언어 검토
 

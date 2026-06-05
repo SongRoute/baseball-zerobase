@@ -28,6 +28,12 @@ from baseball_zerobase.evaluation.rolling import (
     evaluate_fold,
     evaluate_rolling,
 )
+from baseball_zerobase.evaluation.transition import evaluate_transition_model
+from baseball_zerobase.models.transition import SharedTransitionModelV0
+from baseball_zerobase.models.transition_artifact import (
+    read_transition_artifact,
+    write_transition_artifact,
+)
 from baseball_zerobase.paths import require_dev_input
 from baseball_zerobase.profiles.batter_archetype import add_batter_archetypes
 from baseball_zerobase.profiles.batter_threat import add_batter_threat
@@ -276,6 +282,48 @@ def build_daily_state_command(
         request={"input": str(source_path.resolve())},
     )
     typer.echo(f"Wrote {profiled.height} daily state rows to {output_path} ({manifest.path})")
+
+
+@app.command("fit-transition-model")
+def fit_transition_model_command(
+    dataset: Path = typer.Option(..., "--dataset"),
+    output: Path = typer.Option(..., "--output"),
+    min_support: int = typer.Option(1),
+    prior_weight: float = typer.Option(1.0),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    dataset_path = require_dev_input(dataset, settings)
+    output_path = require_dev_input(output, settings)
+    frame = pl.read_parquet(dataset_path)
+    _require_dev_regular_frame(frame, str(dataset_path))
+    model = SharedTransitionModelV0(min_support=min_support, prior_weight=prior_weight).fit(
+        frame,
+        training_manifest_hash=f"file:{dataset_path.resolve()}",
+    )
+    write_transition_artifact(model, output_path)
+    typer.echo(f"Wrote transition model to {output_path}")
+
+
+@app.command("evaluate-transition-model")
+def evaluate_transition_model_command(
+    dataset: Path = typer.Option(..., "--dataset"),
+    model_path: Path = typer.Option(..., "--model"),
+    report_path: Path = typer.Option(..., "--report"),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    dataset_path = require_dev_input(dataset, settings)
+    artifact_path = require_dev_input(model_path, settings)
+    output_path = require_dev_input(report_path, settings)
+    frame = pl.read_parquet(dataset_path)
+    _require_dev_regular_frame(frame, str(dataset_path))
+    model = read_transition_artifact(artifact_path)
+    report = evaluate_transition_model(model, frame)
+    output_path = output_path.resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(report.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
+    typer.echo(f"Wrote transition evaluation report to {output_path}")
 
 
 @app.command("validate-dataset")
