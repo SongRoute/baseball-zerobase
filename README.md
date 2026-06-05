@@ -4,11 +4,12 @@ Baseball Zerobase is a clean-room rewrite for a leakage-safe MLB starting-pitche
 strategy research pipeline. This repository must not use code, model weights, or
 processed data from the prior project.
 
-Milestone 1-2 is limited to data foundations and empirical baselines: immutable
-source acquisition, starter and lineup context, pre-pitch snapshots, as-of starter
-eligibility, empirical behavior and transition baselines, inning simulation, and
-rolling validation. Neural models, recommendations, API serving, and web UI work
-are out of scope.
+Milestone 1-3 covers data foundations, empirical baselines, and deterministic
+personalization features: immutable source acquisition, starter and lineup
+context, pre-pitch snapshots, as-of starter eligibility, pitcher profiles, batter
+weakness archetypes, batter threat scores, same-day state summaries, empirical
+behavior and transition baselines, inning simulation, and rolling validation.
+Neural models, recommendations, API serving, and web UI work are out of scope.
 
 ## Data Partitions
 
@@ -96,6 +97,18 @@ uv run baseball-zerobase build-snapshots \
   --normalized-pitch-events-parquet data/normalized/games/game_pk=123456/pitch_events.parquet \
   --output-parquet data/processed/snapshots/role=dev_regular/snapshots.parquet
 
+uv run baseball-zerobase build-pitcher-profiles \
+  --input data/processed/snapshots/role=dev_regular/snapshots.parquet \
+  --output-parquet data/processed/profiles/role=dev_regular/pitcher_profiles.parquet
+
+uv run baseball-zerobase build-batter-profiles \
+  --input data/processed/snapshots/role=dev_regular/snapshots.parquet \
+  --output-parquet data/processed/profiles/role=dev_regular/batter_profiles.parquet
+
+uv run baseball-zerobase build-daily-state \
+  --input data/processed/snapshots/role=dev_regular/snapshots.parquet \
+  --output-parquet data/processed/profiles/role=dev_regular/daily_state.parquet
+
 uv run baseball-zerobase build-dev-dataset \
   --snapshots-parquet data/processed/snapshots/role=dev_regular/snapshots.parquet \
   --output-parquet data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet
@@ -111,6 +124,20 @@ uv run baseball-zerobase evaluate-rolling \
 
 `prepared_pitch.parquet` must contain development regular-season rows with
 starter and stable-lineup context attached. Keep all paths out of `data/locked`.
+
+## Personalization Features
+
+Milestone 3 feature builders are deterministic transforms over development
+snapshots. Pitcher profiles exclude the target game and use prior two-season
+pitch history with early-season shrinkage flags. Batter weakness archetypes use
+only response tendencies such as chase, whiff, and called-strike rates. Batter
+threat scores use terminal outcome proxies such as reach, extra-base, home-run,
+and strikeout rates. Daily state uses only same-game rows before the target
+pitch.
+
+Every Milestone 3 feature family writes an `*_as_of_timestamp` column. Validation
+rejects feature timestamps that are null or not strictly before the target
+`pitch_timestamp`.
 
 ## Language Review
 

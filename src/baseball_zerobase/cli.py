@@ -29,6 +29,10 @@ from baseball_zerobase.evaluation.rolling import (
     evaluate_rolling,
 )
 from baseball_zerobase.paths import require_dev_input
+from baseball_zerobase.profiles.batter_archetype import add_batter_archetypes
+from baseball_zerobase.profiles.batter_threat import add_batter_threat
+from baseball_zerobase.profiles.daily_state import add_daily_state
+from baseball_zerobase.profiles.pitcher import add_pitcher_profiles
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -52,6 +56,10 @@ def pipeline_smoke_command() -> None:
         _synthetic_normalized_game_frame(),
     )
     snapshots = build_snapshots(prepared)
+    snapshots = add_pitcher_profiles(snapshots, min_pitch_type_pitches=1)
+    snapshots = add_batter_archetypes(snapshots, min_prior_pitches=1)
+    snapshots = add_batter_threat(snapshots)
+    snapshots = add_daily_state(snapshots)
     eligible_snapshots = add_starter_eligibility(snapshots, min_prior_pitches=1)
     report = evaluate_fold(
         eligible_snapshots,
@@ -185,6 +193,89 @@ def build_dev_dataset_command(
         input_paths={"snapshots": snapshots_path},
     )
     typer.echo(f"Wrote {dataset.frame.height} development rows to {output_path} ({manifest.path})")
+
+
+@app.command("build-pitcher-profiles")
+def build_pitcher_profiles_command(
+    input_path: Path = typer.Option(..., "--input"),
+    output_parquet: Path = typer.Option(
+        Path("data/processed/profiles/role=dev_regular/pitcher_profiles.parquet")
+    ),
+    min_pitch_type_pitches: int = typer.Option(100),
+    min_pitch_type_usage: float = typer.Option(0.05),
+    current_season_min_pitches: int = typer.Option(300),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    source_path = require_dev_input(input_path, settings)
+    output_path = require_dev_input(output_parquet, settings)
+    frame = pl.read_parquet(source_path)
+    _require_dev_regular_frame(frame, str(source_path))
+    profiled = add_pitcher_profiles(
+        frame,
+        min_pitch_type_pitches=min_pitch_type_pitches,
+        min_pitch_type_usage=min_pitch_type_usage,
+        current_season_min_pitches=current_season_min_pitches,
+    )
+    manifest = write_snapshot_dataset(
+        profiled,
+        output_path,
+        source="baseball-zerobase.pitcher-profiles",
+        request={
+            "input": str(source_path.resolve()),
+            "min_pitch_type_pitches": min_pitch_type_pitches,
+            "min_pitch_type_usage": min_pitch_type_usage,
+            "current_season_min_pitches": current_season_min_pitches,
+        },
+    )
+    typer.echo(f"Wrote {profiled.height} pitcher profiles to {output_path} ({manifest.path})")
+
+
+@app.command("build-batter-profiles")
+def build_batter_profiles_command(
+    input_path: Path = typer.Option(..., "--input"),
+    output_parquet: Path = typer.Option(
+        Path("data/processed/profiles/role=dev_regular/batter_profiles.parquet")
+    ),
+    min_prior_pitches: int = typer.Option(50),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    source_path = require_dev_input(input_path, settings)
+    output_path = require_dev_input(output_parquet, settings)
+    frame = pl.read_parquet(source_path)
+    _require_dev_regular_frame(frame, str(source_path))
+    profiled = add_batter_threat(add_batter_archetypes(frame, min_prior_pitches=min_prior_pitches))
+    manifest = write_snapshot_dataset(
+        profiled,
+        output_path,
+        source="baseball-zerobase.batter-profiles",
+        request={"input": str(source_path.resolve()), "min_prior_pitches": min_prior_pitches},
+    )
+    typer.echo(f"Wrote {profiled.height} batter profiles to {output_path} ({manifest.path})")
+
+
+@app.command("build-daily-state")
+def build_daily_state_command(
+    input_path: Path = typer.Option(..., "--input"),
+    output_parquet: Path = typer.Option(
+        Path("data/processed/profiles/role=dev_regular/daily_state.parquet")
+    ),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    source_path = require_dev_input(input_path, settings)
+    output_path = require_dev_input(output_parquet, settings)
+    frame = pl.read_parquet(source_path)
+    _require_dev_regular_frame(frame, str(source_path))
+    profiled = add_daily_state(frame)
+    manifest = write_snapshot_dataset(
+        profiled,
+        output_path,
+        source="baseball-zerobase.daily-state",
+        request={"input": str(source_path.resolve())},
+    )
+    typer.echo(f"Wrote {profiled.height} daily state rows to {output_path} ({manifest.path})")
 
 
 @app.command("validate-dataset")
