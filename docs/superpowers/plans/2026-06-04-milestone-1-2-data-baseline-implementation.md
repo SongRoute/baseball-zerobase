@@ -1,6 +1,6 @@
 # Milestone 1-2 Data Foundation and Baseline System Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]` / `- [x]`) syntax for tracking.
 
 **Goal:** Build a clean-room, reproducible pipeline that downloads MLB source data, reconstructs leakage-safe pre-pitch snapshots for qualified starting pitchers, and evaluates empirical behavior and transition baselines through an inning simulator.
 
@@ -9,6 +9,33 @@
 **Tech Stack:** Python 3.12, uv, Polars, PyArrow, pybaseball, httpx, Pydantic, Typer, NumPy, SciPy, scikit-learn metrics, pytest, Ruff, Pyright.
 
 ---
+
+## Implementation Status
+
+Status: Completed on branch `codex/milestone-1-2`.
+
+Completion commits:
+
+- `abaa971 feat: connect data and baseline pipeline`
+- `2fd5843 style: format python sources`
+- `4f01c4f fix: harden rolling evaluation guards`
+- `2c1374d feat: add rolling baseline evaluation`
+- `ae0e3dd fix: correct inning simulator score state`
+- `4e86356 feat: add deterministic inning simulator`
+- `2a53229 fix: validate transition backoff reachability`
+- `0955a1e fix: filter transition backoff by state context`
+- `499d6a3 feat: add empirical transition baseline`
+- `4347e7c fix: harden empirical behavior baseline`
+- `377191b feat: add empirical behavior baseline`
+
+Final local verification:
+
+- `scripts/check.sh` passed with Ruff, Ruff format check, Pyright, and `155 passed`.
+- `uv run baseball-zerobase pipeline-smoke` passed with truncation rate `0.000`.
+- `git diff --check` passed.
+- Network smoke in `/private/tmp/baseball-zerobase-network-smoke` downloaded one completed
+  regular-season day, normalized 14 game feeds, built 4,190 snapshots, and validated a
+  non-empty 1,029-row development dataset with `locked_row_count=0`.
 
 ## Scope Boundary
 
@@ -141,7 +168,7 @@ tests/
 - Create: `artifacts/.gitignore`
 - Create: `reports/generated/.gitignore`
 
-- [ ] **Step 1: Write the failing CLI smoke test**
+- [x] **Step 1: Write the failing CLI smoke test**
 
 ```python
 # tests/test_cli_smoke.py
@@ -167,13 +194,13 @@ def test_korean_readme_exists_for_user_review() -> None:
     assert "클린룸" in readme_ko.read_text(encoding="utf-8")
 ```
 
-- [ ] **Step 2: Run the smoke test and verify it fails**
+- [x] **Step 2: Run the smoke test and verify it fails**
 
 Run: `uv run pytest tests/test_cli_smoke.py tests/test_docs_language.py -q`
 
 Expected: FAIL because the new package and CLI do not exist.
 
-- [ ] **Step 3: Create the package and quality configuration**
+- [x] **Step 3: Create the package and quality configuration**
 
 Use this dependency set in `pyproject.toml`:
 
@@ -250,7 +277,7 @@ Create `README.md` in English and `README.ko.md` as its Korean review translatio
 must state that this is a clean-room rewrite, the project is restricted to MLB starting pitchers,
 and Milestone 1-2 builds only leakage-safe data foundations and empirical baselines.
 
-- [ ] **Step 4: Install and verify the scaffold**
+- [x] **Step 4: Install and verify the scaffold**
 
 Run:
 
@@ -263,7 +290,7 @@ uv run pyright src tests
 
 Expected: all commands PASS.
 
-- [ ] **Step 5: Commit the scaffold**
+- [x] **Step 5: Commit the scaffold**
 
 ```bash
 git add pyproject.toml README.md README.ko.md configs/base.yaml scripts/check.sh \
@@ -284,7 +311,7 @@ git commit -m "chore: scaffold clean-room data baseline project"
 - Create: `tests/data/test_splits.py`
 - Modify: `configs/base.yaml`
 
-- [ ] **Step 1: Write failing configuration and split-guard tests**
+- [x] **Step 1: Write failing configuration and split-guard tests**
 
 ```python
 # tests/data/test_splits.py
@@ -331,13 +358,13 @@ def test_settings_resolve_paths_under_project_root(tmp_path) -> None:
     assert settings.locked_dir == tmp_path / "data" / "locked"
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run: `uv run pytest tests/test_config.py tests/data/test_splits.py -q`
 
 Expected: FAIL because settings and split guards do not exist.
 
-- [ ] **Step 3: Implement settings and split contracts**
+- [x] **Step 3: Implement settings and split contracts**
 
 ```python
 # src/baseball_zerobase/data/splits.py
@@ -402,13 +429,13 @@ def require_dev_input(path: Path, settings: Settings) -> Path:
     return path
 ```
 
-- [ ] **Step 4: Verify configuration and locked-data tests**
+- [x] **Step 4: Verify configuration and locked-data tests**
 
 Run: `uv run pytest tests/test_config.py tests/data/test_splits.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit configuration contracts**
+- [x] **Step 5: Commit configuration contracts**
 
 ```bash
 git add configs/base.yaml src/baseball_zerobase/config.py src/baseball_zerobase/paths.py \
@@ -426,7 +453,7 @@ git commit -m "feat: add configuration and locked data guard"
 - Create: `tests/data/test_outcomes.py`
 - Create: `tests/data/test_zone_mapper.py`
 
-- [ ] **Step 1: Write failing zone and contract tests**
+- [x] **Step 1: Write failing zone and contract tests**
 
 ```python
 # tests/data/test_zone_mapper.py
@@ -460,13 +487,13 @@ def test_nonterminal_pitch_description_is_preserved() -> None:
     assert map_outcome(description="foul", event=None) is OutcomeLabel.FOUL
 ```
 
-- [ ] **Step 2: Run the zone tests and verify they fail**
+- [x] **Step 2: Run the zone tests and verify they fail**
 
 Run: `uv run pytest tests/data/test_zone_mapper.py tests/data/test_outcomes.py -q`
 
 Expected: FAIL because the contracts and mapper do not exist.
 
-- [ ] **Step 3: Implement immutable contracts and the zone mapper**
+- [x] **Step 3: Implement immutable contracts and the zone mapper**
 
 Define these enums and Pydantic models in `contracts.py`:
 
@@ -540,7 +567,7 @@ Implement `map_outcome` with terminal `events` taking precedence over `descripti
 - nonterminal ball, called-strike, swinging-strike, and foul descriptions map explicitly
 - unrecognized values map to `OTHER` and are counted by validation
 
-- [ ] **Step 4: Run contract and zone tests**
+- [x] **Step 4: Run contract and zone tests**
 
 Run:
 
@@ -551,7 +578,7 @@ uv run pyright src/baseball_zerobase/data
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit contracts and zone mapping**
+- [x] **Step 5: Commit contracts and zone mapping**
 
 ```bash
 git add src/baseball_zerobase/data/contracts.py src/baseball_zerobase/data/outcomes.py \
@@ -569,7 +596,7 @@ git commit -m "feat: define pitch contracts and relative zones"
 - Create: `tests/data/test_statcast.py`
 - Modify: `src/baseball_zerobase/cli.py`
 
-- [ ] **Step 1: Write failing manifest and downloader tests**
+- [x] **Step 1: Write failing manifest and downloader tests**
 
 ```python
 # tests/data/test_manifest.py
@@ -603,13 +630,13 @@ def test_download_statcast_writes_partition_and_manifest(tmp_path, monkeypatch) 
     assert result.manifest_path.exists()
 ```
 
-- [ ] **Step 2: Run acquisition tests and verify they fail**
+- [x] **Step 2: Run acquisition tests and verify they fail**
 
 Run: `uv run pytest tests/data/test_manifest.py tests/data/test_statcast.py -q`
 
 Expected: FAIL because manifest and downloader modules do not exist.
 
-- [ ] **Step 3: Implement immutable acquisition**
+- [x] **Step 3: Implement immutable acquisition**
 
 `manifest.py` must:
 
@@ -653,7 +680,7 @@ def download_statcast_command(
     typer.echo(result.data_path)
 ```
 
-- [ ] **Step 4: Verify acquisition and CLI**
+- [x] **Step 4: Verify acquisition and CLI**
 
 Run:
 
@@ -664,7 +691,7 @@ uv run ruff check src/baseball_zerobase/data tests/data
 
 Expected: PASS without making network calls.
 
-- [ ] **Step 5: Commit immutable acquisition**
+- [x] **Step 5: Commit immutable acquisition**
 
 ```bash
 git add src/baseball_zerobase/data/manifest.py src/baseball_zerobase/data/statcast.py \
@@ -680,7 +707,7 @@ git commit -m "feat: add immutable Statcast acquisition"
 - Create: `tests/data/test_game_feed.py`
 - Modify: `src/baseball_zerobase/cli.py`
 
-- [ ] **Step 1: Add a minimal game-feed fixture and failing normalization tests**
+- [x] **Step 1: Add a minimal game-feed fixture and failing normalization tests**
 
 The fixture must contain:
 
@@ -705,13 +732,13 @@ def test_normalize_game_feed_extracts_starters_and_initial_lineups(fixture_dir) 
     assert len(game.away_initial_lineup) == 9
 ```
 
-- [ ] **Step 2: Run the game-feed tests and verify they fail**
+- [x] **Step 2: Run the game-feed tests and verify they fail**
 
 Run: `uv run pytest tests/data/test_game_feed.py -q`
 
 Expected: FAIL because `game_feed.py` does not exist.
 
-- [ ] **Step 3: Implement feed download and normalization**
+- [x] **Step 3: Implement feed download and normalization**
 
 Use `httpx.Client`, `tenacity`, and this endpoint:
 
@@ -760,13 +787,13 @@ Normalization rules:
 
 Add a `download-games --game-pks-parquet PATH` CLI command.
 
-- [ ] **Step 4: Verify game-feed normalization**
+- [x] **Step 4: Verify game-feed normalization**
 
 Run: `uv run pytest tests/data/test_game_feed.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit game-feed acquisition**
+- [x] **Step 5: Commit game-feed acquisition**
 
 ```bash
 git add src/baseball_zerobase/data/game_feed.py src/baseball_zerobase/cli.py \
@@ -781,7 +808,7 @@ git commit -m "feat: normalize starters and lineups from game feeds"
 - Create: `tests/conftest.py`
 - Create: `tests/data/test_starter_lineup.py`
 
-- [ ] **Step 1: Write failing starter and lineup tests**
+- [x] **Step 1: Write failing starter and lineup tests**
 
 ```python
 # tests/data/test_starter_lineup.py
@@ -798,13 +825,13 @@ def test_marks_snapshots_unstable_at_first_substitution(statcast_frame, normaliz
     assert result["lineup_stable"].to_list() == [True, True, False]
 ```
 
-- [ ] **Step 2: Run starter-lineup tests and verify they fail**
+- [x] **Step 2: Run starter-lineup tests and verify they fail**
 
 Run: `uv run pytest tests/data/test_starter_lineup.py -q`
 
 Expected: FAIL because starter-lineup normalization does not exist.
 
-- [ ] **Step 3: Implement starter and lineup context**
+- [x] **Step 3: Implement starter and lineup context**
 
 `attach_starter_and_lineup_context` must:
 
@@ -829,13 +856,13 @@ Create reusable Polars fixtures in `tests/conftest.py`:
 
 Every fixture uses small literal dictionaries converted with `pl.DataFrame`; no fixture reads data from `/Users/song/Projects/baseball`.
 
-- [ ] **Step 4: Verify starter and lineup behavior**
+- [x] **Step 4: Verify starter and lineup behavior**
 
 Run: `uv run pytest tests/data/test_starter_lineup.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit starter and lineup context**
+- [x] **Step 5: Commit starter and lineup context**
 
 ```bash
 git add src/baseball_zerobase/data/starter_lineup.py tests/conftest.py \
@@ -850,7 +877,7 @@ git commit -m "feat: attach official starter and stable lineup context"
 - Create: `tests/data/test_snapshots.py`
 - Modify: `src/baseball_zerobase/cli.py`
 
-- [ ] **Step 1: Write failing snapshot and transition tests**
+- [x] **Step 1: Write failing snapshot and transition tests**
 
 ```python
 # tests/data/test_snapshots.py
@@ -874,13 +901,13 @@ def test_transition_atom_uses_next_observed_state(prepared_pitch_frame) -> None:
     assert first["plate_appearance_ended"] is False
 ```
 
-- [ ] **Step 2: Run snapshot tests and verify they fail**
+- [x] **Step 2: Run snapshot tests and verify they fail**
 
 Run: `uv run pytest tests/data/test_snapshots.py -q`
 
 Expected: FAIL because snapshot building does not exist.
 
-- [ ] **Step 3: Implement snapshots and observed transitions**
+- [x] **Step 3: Implement snapshots and observed transitions**
 
 Snapshot columns must include:
 
@@ -922,7 +949,7 @@ Add a complete `build-snapshots` command that:
 - calls `require_dev_role`
 - writes partitioned snapshots and a dataset manifest
 
-- [ ] **Step 4: Verify snapshots and transition atoms**
+- [x] **Step 4: Verify snapshots and transition atoms**
 
 Run:
 
@@ -933,7 +960,7 @@ uv run pyright src/baseball_zerobase/data/snapshots.py
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit snapshot construction**
+- [x] **Step 5: Commit snapshot construction**
 
 ```bash
 git add src/baseball_zerobase/data/snapshots.py src/baseball_zerobase/cli.py \
@@ -949,7 +976,7 @@ git commit -m "feat: build leakage-safe pre-pitch snapshots"
 - Modify: `src/baseball_zerobase/data/snapshots.py`
 - Modify: `src/baseball_zerobase/cli.py`
 
-- [ ] **Step 1: Write failing as-of eligibility tests**
+- [x] **Step 1: Write failing as-of eligibility tests**
 
 ```python
 # tests/data/test_eligibility.py
@@ -965,13 +992,13 @@ def test_eligibility_counts_only_prior_games(starter_snapshot_frame) -> None:
     assert second_game["starter_eligible"].unique().to_list() == [True]
 ```
 
-- [ ] **Step 2: Run eligibility tests and verify they fail**
+- [x] **Step 2: Run eligibility tests and verify they fail**
 
 Run: `uv run pytest tests/data/test_eligibility.py -q`
 
 Expected: FAIL because eligibility code does not exist.
 
-- [ ] **Step 3: Implement prior-game-only eligibility**
+- [x] **Step 3: Implement prior-game-only eligibility**
 
 Implementation rules:
 
@@ -992,13 +1019,13 @@ Implementation rules:
 
 Add `build-dev-dataset` CLI command and write a dataset manifest containing input checksums and filter counts.
 
-- [ ] **Step 4: Verify eligibility and development dataset rules**
+- [x] **Step 4: Verify eligibility and development dataset rules**
 
 Run: `uv run pytest tests/data/test_eligibility.py tests/data/test_snapshots.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit eligibility and dataset building**
+- [x] **Step 5: Commit eligibility and dataset building**
 
 ```bash
 git add src/baseball_zerobase/data/eligibility.py src/baseball_zerobase/data/snapshots.py \
@@ -1013,7 +1040,7 @@ git commit -m "feat: add as-of starter eligibility"
 - Create: `tests/data/test_validation.py`
 - Modify: `src/baseball_zerobase/cli.py`
 
-- [ ] **Step 1: Write failing validation tests**
+- [x] **Step 1: Write failing validation tests**
 
 ```python
 # tests/data/test_validation.py
@@ -1034,13 +1061,13 @@ def test_audit_reports_action_and_terminal_distributions(valid_snapshot_frame) -
     assert report.locked_row_count == 0
 ```
 
-- [ ] **Step 2: Run validation tests and verify they fail**
+- [x] **Step 2: Run validation tests and verify they fail**
 
 Run: `uv run pytest tests/data/test_validation.py -q`
 
 Expected: FAIL because validation code does not exist.
 
-- [ ] **Step 3: Implement fail-closed audits**
+- [x] **Step 3: Implement fail-closed audits**
 
 The audit must raise on:
 
@@ -1065,7 +1092,7 @@ The audit report must include:
 
 Add `validate-dataset --input PATH --report PATH` CLI command. Generated reports go under `reports/generated/` and are not committed.
 
-- [ ] **Step 4: Verify audits**
+- [x] **Step 4: Verify audits**
 
 Run:
 
@@ -1076,7 +1103,7 @@ uv run ruff check src/baseball_zerobase/data/validation.py
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit validation**
+- [x] **Step 5: Commit validation**
 
 ```bash
 git add src/baseball_zerobase/data/validation.py src/baseball_zerobase/cli.py \
@@ -1091,7 +1118,7 @@ git commit -m "feat: add dataset validation and leakage audits"
 - Create: `src/baseball_zerobase/baseline/behavior.py`
 - Create: `tests/baseline/test_behavior.py`
 
-- [ ] **Step 1: Write failing behavior-model tests**
+- [x] **Step 1: Write failing behavior-model tests**
 
 ```python
 # tests/baseline/test_behavior.py
@@ -1113,13 +1140,13 @@ def test_behavior_model_backs_off_when_context_is_sparse(baseline_snapshot_frame
     assert model.last_backoff_level == "global"
 ```
 
-- [ ] **Step 2: Run behavior tests and verify they fail**
+- [x] **Step 2: Run behavior tests and verify they fail**
 
 Run: `uv run pytest tests/baseline/test_behavior.py -q`
 
 Expected: FAIL because the behavior baseline does not exist.
 
-- [ ] **Step 3: Implement hierarchical empirical behavior**
+- [x] **Step 3: Implement hierarchical empirical behavior**
 
 The model estimates actual MLB action frequencies and uses these backoff levels:
 
@@ -1138,13 +1165,13 @@ Requirements:
 - never use behavior probabilities to remove future recommendation zones
 - serialize to JSON containing counts, actions, settings, and training manifest hash
 
-- [ ] **Step 4: Verify behavior baseline**
+- [x] **Step 4: Verify behavior baseline**
 
 Run: `uv run pytest tests/baseline/test_behavior.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit behavior baseline**
+- [x] **Step 5: Commit behavior baseline**
 
 ```bash
 git add src/baseball_zerobase/baseline/__init__.py \
@@ -1158,7 +1185,7 @@ git commit -m "feat: add empirical behavior baseline"
 - Create: `src/baseball_zerobase/baseline/transition.py`
 - Create: `tests/baseline/test_transition.py`
 
-- [ ] **Step 1: Write failing transition-model tests**
+- [x] **Step 1: Write failing transition-model tests**
 
 ```python
 # tests/baseline/test_transition.py
@@ -1190,13 +1217,13 @@ def test_sampled_transition_preserves_state_invariants(baseline_snapshot_frame) 
     assert 0 <= atom.runners_after <= 7
 ```
 
-- [ ] **Step 2: Run transition tests and verify they fail**
+- [x] **Step 2: Run transition tests and verify they fail**
 
 Run: `uv run pytest tests/baseline/test_transition.py -q`
 
 Expected: FAIL because the transition baseline does not exist.
 
-- [ ] **Step 3: Implement hierarchical empirical transitions**
+- [x] **Step 3: Implement hierarchical empirical transitions**
 
 The model predicts a distribution over immutable `TransitionAtom` values using:
 
@@ -1217,13 +1244,13 @@ Requirements:
 - serialize counts and training manifest hash
 - validate every fitted atom against state invariants
 
-- [ ] **Step 4: Verify transition baseline**
+- [x] **Step 4: Verify transition baseline**
 
 Run: `uv run pytest tests/baseline/test_transition.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit transition baseline**
+- [x] **Step 5: Commit transition baseline**
 
 ```bash
 git add src/baseball_zerobase/baseline/transition.py tests/baseline/test_transition.py
@@ -1239,7 +1266,7 @@ git commit -m "feat: add empirical transition baseline"
 - Create: `tests/simulation/test_state.py`
 - Create: `tests/simulation/test_inning.py`
 
-- [ ] **Step 1: Write failing simulator tests**
+- [x] **Step 1: Write failing simulator tests**
 
 ```python
 # tests/simulation/test_inning.py
@@ -1275,13 +1302,13 @@ def test_plate_appearance_advance_rotates_batter_and_stand() -> None:
     assert advanced.stand == "L"
 ```
 
-- [ ] **Step 2: Run simulator tests and verify they fail**
+- [x] **Step 2: Run simulator tests and verify they fail**
 
 Run: `uv run pytest tests/simulation -q`
 
 Expected: FAIL because simulation modules do not exist.
 
-- [ ] **Step 3: Implement game state and simulation**
+- [x] **Step 3: Implement game state and simulation**
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -1312,7 +1339,7 @@ The simulator must:
 - return runs, pitch counts, zero-run probability, and 2+-run probability
 - accept an optional fixed first action for later single-decision value work, without ranking actions in this milestone
 
-- [ ] **Step 4: Verify simulator invariants and determinism**
+- [x] **Step 4: Verify simulator invariants and determinism**
 
 Run:
 
@@ -1323,7 +1350,7 @@ uv run pyright src/baseball_zerobase/simulation
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit simulator**
+- [x] **Step 5: Commit simulator**
 
 ```bash
 git add src/baseball_zerobase/simulation tests/simulation
@@ -1340,7 +1367,7 @@ git commit -m "feat: add deterministic inning simulator"
 - Create: `tests/evaluation/test_rolling.py`
 - Modify: `src/baseball_zerobase/cli.py`
 
-- [ ] **Step 1: Write failing metric and fold tests**
+- [x] **Step 1: Write failing metric and fold tests**
 
 ```python
 # tests/evaluation/test_rolling.py
@@ -1366,13 +1393,13 @@ def test_inning_metrics_compare_zero_and_multi_run_rates() -> None:
     assert metrics.multi_run_probability_error == 0.0
 ```
 
-- [ ] **Step 2: Run evaluation tests and verify they fail**
+- [x] **Step 2: Run evaluation tests and verify they fail**
 
 Run: `uv run pytest tests/evaluation -q`
 
 Expected: FAIL because evaluation modules do not exist.
 
-- [ ] **Step 3: Implement rolling baseline evaluation**
+- [x] **Step 3: Implement rolling baseline evaluation**
 
 Implement fixed folds:
 
@@ -1408,7 +1435,7 @@ Metrics must include:
 
 Add the complete `evaluate-rolling --dataset PATH --output-dir PATH` command.
 
-- [ ] **Step 4: Verify rolling evaluation**
+- [x] **Step 4: Verify rolling evaluation**
 
 Run:
 
@@ -1419,7 +1446,7 @@ uv run ruff check src/baseball_zerobase/evaluation
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit evaluation**
+- [x] **Step 5: Commit evaluation**
 
 ```bash
 git add src/baseball_zerobase/evaluation src/baseball_zerobase/cli.py tests/evaluation
@@ -1435,7 +1462,7 @@ git commit -m "feat: add rolling baseline evaluation"
 - Modify: `README.ko.md`
 - Modify: `scripts/check.sh`
 
-- [ ] **Step 1: Write the failing end-to-end fixture test**
+- [x] **Step 1: Write the failing end-to-end fixture test**
 
 ```python
 # tests/test_end_to_end_pipeline.py
@@ -1453,13 +1480,13 @@ def test_fixture_pipeline_builds_and_evaluates_baseline(raw_fixture_frame, norma
     assert report.simulation_truncation_rate == 0
 ```
 
-- [ ] **Step 2: Run the end-to-end test and verify it fails**
+- [x] **Step 2: Run the end-to-end test and verify it fails**
 
 Run: `uv run pytest tests/test_end_to_end_pipeline.py -q`
 
 Expected: FAIL until fixture wiring and public interfaces are consistent.
 
-- [ ] **Step 3: Complete public interfaces and documentation**
+- [x] **Step 3: Complete public interfaces and documentation**
 
 Make public function signatures consistent with the end-to-end test. Update README with:
 
@@ -1485,7 +1512,7 @@ uv run pyright src tests
 uv run pytest -q
 ```
 
-- [ ] **Step 4: Run full verification**
+- [x] **Step 4: Run full verification**
 
 Run:
 
@@ -1501,7 +1528,7 @@ Expected:
 - `pipeline-smoke` exits 0 and prints a baseline metric summary
 - `git diff --check` has no output
 
-- [ ] **Step 5: Commit the connected pipeline**
+- [x] **Step 5: Commit the connected pipeline**
 
 ```bash
 git add README.md README.ko.md scripts/check.sh src/baseball_zerobase/cli.py \
@@ -1513,14 +1540,14 @@ git commit -m "feat: connect data and baseline pipeline"
 
 After all tasks are complete:
 
-1. Run `scripts/check.sh`.
-2. Run `uv run baseball-zerobase pipeline-smoke`.
-3. Run a network smoke download for one completed regular-season day into a temporary project root.
-4. Validate the downloaded raw manifest and normalized game feed.
-5. Build snapshots for that day and run `validate-dataset`.
-6. Confirm that no path under `data/locked/` was read by any development command.
-7. Confirm that no code, model weight, or processed data from `/Users/song/Projects/baseball` was imported or copied.
-8. Confirm that user-facing English Markdown changes have Korean counterparts, especially `README.ko.md`.
-9. Record the exact commands and generated report paths in the implementation completion summary.
+1. [x] Run `scripts/check.sh`.
+2. [x] Run `uv run baseball-zerobase pipeline-smoke`.
+3. [x] Run a network smoke download for one completed regular-season day into a temporary project root.
+4. [x] Validate the downloaded raw manifest and normalized game feed.
+5. [x] Build snapshots for that day and run `validate-dataset`.
+6. [x] Confirm that no path under `data/locked/` was read by any development command.
+7. [x] Confirm that no code, model weight, or processed data from `/Users/song/Projects/baseball` was imported or copied.
+8. [x] Confirm that user-facing English Markdown changes have Korean counterparts, especially `README.ko.md`.
+9. [x] Record the exact commands and generated report paths in the implementation completion summary.
 
 The next implementation plan begins only after the rolling baseline reports demonstrate that the data contracts, state transitions, and simulator are trustworthy enough to compare against personalized models.
