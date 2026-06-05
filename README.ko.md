@@ -154,6 +154,17 @@ count를 smoothing하고, target label column을 model feature에서 제외하�
 있습니다. 구성요소 평가는 전이 log loss, calibration error, rare outcome recall,
 한글 요약을 보고합니다.
 
+## GPU 학습 준비
+
+원격 서버에서 개발 전용 dataset 생성과 전이 baseline 학습을 준비할 때는 GPU 학습
+런북을 사용합니다:
+
+- 영어: `docs/gpu-training-runbook.md`
+- 한글 검토본: `docs/gpu-training-runbook.ko.md`
+
+런북에는 서버 스모크, 작은 실제 데이터 스모크, 2022 전체 시즌 확장, 2022-2024 확장,
+진단, Milestone 5 추천 준비 단계가 포함되어 있습니다.
+
 ## 언어 검토
 
 사용자 대상 영어 Markdown 문서에는 한국어 검토용 대응 문서가 있어야 합니다.

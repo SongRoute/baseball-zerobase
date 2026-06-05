@@ -158,6 +158,18 @@ features, emits normalized legal `TransitionAtom` distributions, and can be used
 directly by the inning simulator. Component evaluation reports transition log
 loss, calibration error, rare-outcome recall, and Korean summary text.
 
+## GPU Training Preparation
+
+Use the GPU training runbook when preparing a remote server for dev-only dataset
+generation and transition baseline training:
+
+- English: `docs/gpu-training-runbook.md`
+- Korean review: `docs/gpu-training-runbook.ko.md`
+
+The runbook includes the server smoke, small real-data smoke, 2022 full-season
+expansion, 2022-2024 expansion, diagnostics, and Milestone 5 recommendation
+readiness steps.
+
 ## Language Review
 
 User-facing English Markdown documents must have Korean review counterparts.
