@@ -84,6 +84,7 @@ def audit_snapshots(frame: pl.DataFrame) -> ValidationReport:
     _reject_missing_required_columns(frame)
     _reject_duplicate_pitch_keys(frame)
     _reject_timestamp_leakage(frame)
+    _reject_feature_timestamp_leakage(frame)
 
     dataset_role_counts = _dataset_role_counts(frame)
     locked_row_count = sum(
@@ -195,6 +196,43 @@ def _reject_timestamp_leakage(frame: pl.DataFrame) -> None:
         raise LeakageError(
             "snapshot rows must have as_of_timestamp strictly before pitch_timestamp "
             f"when both exist; leaky row indexes: {_sample(leaky_keys)}"
+        )
+
+
+def _reject_feature_timestamp_leakage(frame: pl.DataFrame) -> None:
+    feature_columns = [
+        column
+        for column in frame.columns
+        if column.endswith("_as_of_timestamp") and column != "as_of_timestamp"
+    ]
+    if not feature_columns:
+        return
+
+    malformed_rows: list[str] = []
+    leaky_rows: list[str] = []
+    selected_columns = ["pitch_timestamp", *feature_columns]
+    for index, row in enumerate(frame.select(selected_columns).iter_rows(named=True)):
+        pitch_timestamp = _datetime_or_none(row["pitch_timestamp"])
+        if pitch_timestamp is None:
+            malformed_rows.append(str(index))
+            continue
+        for column in feature_columns:
+            feature_timestamp = _datetime_or_none(row[column])
+            if feature_timestamp is None:
+                malformed_rows.append(f"{index}:{column}")
+                continue
+            if feature_timestamp >= pitch_timestamp:
+                leaky_rows.append(f"{index}:{column}")
+
+    if malformed_rows:
+        raise LeakageError(
+            "profile feature timestamp columns must be non-null and parseable; "
+            f"malformed row indexes: {_sample(malformed_rows)}"
+        )
+    if leaky_rows:
+        raise LeakageError(
+            "profile feature timestamp columns must be strictly before pitch_timestamp; "
+            f"leaky feature timestamp rows: {_sample(leaky_rows)}"
         )
 
 

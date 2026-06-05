@@ -78,6 +78,17 @@ def test_audit_rejects_future_as_of_timestamp(leaky_snapshot_frame: pl.DataFrame
         audit_snapshots(leaky_snapshot_frame)
 
 
+def test_audit_rejects_future_profile_feature_timestamp(
+    valid_snapshot_frame: pl.DataFrame,
+) -> None:
+    leaky = valid_snapshot_frame.with_columns(
+        pl.col("pitch_timestamp").alias("pitcher_profile_as_of_timestamp")
+    )
+
+    with pytest.raises(LeakageError, match="feature timestamp"):
+        audit_snapshots(leaky)
+
+
 def test_audit_rejects_duplicate_pitch_keys(valid_snapshot_frame: pl.DataFrame) -> None:
     duplicate = valid_snapshot_frame.with_columns(
         _replace_row("at_bat_number", 1, 1),

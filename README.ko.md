@@ -4,10 +4,11 @@ Baseball Zerobase는 누수 방지 MLB 선발투수 전략 연구 파이프라�
 클린룸 재작성 프로젝트입니다. 이 저장소는 이전 프로젝트의 코드, 모델 가중치,
 또는 처리된 데이터를 사용하면 안 됩니다.
 
-Milestone 1-2의 범위는 데이터 기반과 경험적 베이스라인으로 제한됩니다:
-불변 원천 데이터 수집, 선발투수와 라인업 맥락, 투구 전 스냅샷, as-of 선발
-자격, 경험적 행동 및 전이 베이스라인, 이닝 시뮬레이션, 롤링 검증만 포함합니다.
-신경망 모델, 추천, API 서빙, 웹 UI는 범위 밖입니다.
+Milestone 1-3의 범위는 데이터 기반, 경험적 베이스라인, 결정론적 개인화 feature를
+포함합니다: 불변 원천 데이터 수집, 선발투수와 라인업 맥락, 투구 전 스냅샷,
+as-of 선발 자격, 투수 프로필, 타자 약점 유형, 타자 위협도, 당일 누적 상태,
+경험적 행동 및 전이 베이스라인, 이닝 시뮬레이션, 롤링 검증을 포함합니다. 신경망
+모델, 추천, API 서빙, 웹 UI는 범위 밖입니다.
 
 ## 데이터 파티션
 
@@ -96,6 +97,18 @@ uv run baseball-zerobase build-snapshots \
   --normalized-pitch-events-parquet data/normalized/games/game_pk=123456/pitch_events.parquet \
   --output-parquet data/processed/snapshots/role=dev_regular/snapshots.parquet
 
+uv run baseball-zerobase build-pitcher-profiles \
+  --input data/processed/snapshots/role=dev_regular/snapshots.parquet \
+  --output-parquet data/processed/profiles/role=dev_regular/pitcher_profiles.parquet
+
+uv run baseball-zerobase build-batter-profiles \
+  --input data/processed/snapshots/role=dev_regular/snapshots.parquet \
+  --output-parquet data/processed/profiles/role=dev_regular/batter_profiles.parquet
+
+uv run baseball-zerobase build-daily-state \
+  --input data/processed/snapshots/role=dev_regular/snapshots.parquet \
+  --output-parquet data/processed/profiles/role=dev_regular/daily_state.parquet
+
 uv run baseball-zerobase build-dev-dataset \
   --snapshots-parquet data/processed/snapshots/role=dev_regular/snapshots.parquet \
   --output-parquet data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet
@@ -111,6 +124,17 @@ uv run baseball-zerobase evaluate-rolling \
 
 `prepared_pitch.parquet`에는 선발투수와 안정 라인업 맥락이 연결된 개발 정규시즌
 행만 들어 있어야 합니다. 모든 경로는 `data/locked` 밖에 두세요.
+
+## 개인화 Feature
+
+Milestone 3 feature builder는 개발 snapshot 위에서 동작하는 결정론적 변환입니다.
+투수 프로필은 target 경기를 제외하고 이전 2개 시즌 투구 이력을 사용하며, 시즌 초
+축소 추정 flag를 기록합니다. 타자 약점 유형은 chase, whiff, called strike 같은
+반응 성향만 사용합니다. 타자 위협도는 출루, 장타, 홈런, 삼진 같은 타석 종료 outcome
+proxy를 사용합니다. 당일 누적 상태는 target pitch 이전의 같은 경기 행만 사용합니다.
+
+각 Milestone 3 feature family는 `*_as_of_timestamp` 열을 씁니다. 검증은 feature
+timestamp가 비어 있거나 target `pitch_timestamp`보다 엄격히 이전이 아니면 거부합니다.
 
 ## 언어 검토
 
