@@ -1,6 +1,6 @@
 # Milestone 4 Shared Transition Model Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build a contract-first shared transition model v0 that emits legal `TransitionAtom` probability distributions for candidate `pitch_type × batter-relative 13-zone` actions.
 
@@ -45,7 +45,7 @@ README.ko.md
 - Create: `src/baseball_zerobase/models/transition_context.py`
 - Create: `tests/models/test_transition_context.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_context_excludes_target_label_columns() -> None:
@@ -66,7 +66,7 @@ uv run pytest tests/models/test_transition_context.py -q
 
 Expected: FAIL because `baseball_zerobase.models.transition_context` does not exist.
 
-- [ ] **Step 2: Implement minimal context extraction**
+- [x] **Step 2: Implement minimal context extraction**
 
 Create a frozen `TransitionContext` dataclass with:
 
@@ -98,7 +98,7 @@ LABEL_COLUMNS = {
 }
 ```
 
-- [ ] **Step 3: Verify Phase 1**
+- [x] **Step 3: Verify Phase 1**
 
 ```bash
 uv run pytest tests/models/test_transition_context.py -q
@@ -112,7 +112,7 @@ Expected: PASS.
 - Create: `src/baseball_zerobase/models/transition_heads.py`
 - Create: `tests/models/test_transition_heads.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_head_labels_map_swinging_strike_to_swing_no_contact() -> None:
@@ -134,7 +134,7 @@ uv run pytest tests/models/test_transition_heads.py -q
 
 Expected: FAIL because `transition_heads.py` does not exist.
 
-- [ ] **Step 2: Implement head labels**
+- [x] **Step 2: Implement head labels**
 
 Create a frozen `TransitionHeadLabels` dataclass with fields:
 
@@ -149,7 +149,7 @@ plate_appearance: str
 
 Implement `head_labels_from_row(row)` using the existing `OutcomeLabel` values.
 
-- [ ] **Step 3: Implement legal transition checks**
+- [x] **Step 3: Implement legal transition checks**
 
 Implement:
 
@@ -162,7 +162,7 @@ It must enforce probability-support invariants from the design:
 `outs_after >= outs`, `outs_after <= 3`, non-terminal count monotonicity, terminal
 count reset, and valid runner tuple length.
 
-- [ ] **Step 4: Verify Phase 2**
+- [x] **Step 4: Verify Phase 2**
 
 ```bash
 uv run pytest tests/models/test_transition_heads.py -q
@@ -176,7 +176,7 @@ Expected: PASS.
 - Create: `src/baseball_zerobase/models/transition.py`
 - Create: `tests/models/test_transition_model.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_transition_model_predicts_normalized_legal_distribution() -> None:
@@ -196,7 +196,7 @@ uv run pytest tests/models/test_transition_model.py -q
 
 Expected: FAIL because `SharedTransitionModelV0` does not exist.
 
-- [ ] **Step 2: Implement model state**
+- [x] **Step 2: Implement model state**
 
 Create `SharedTransitionModelV0` with:
 
@@ -220,14 +220,14 @@ Personalized buckets should use coarse existing feature values such as
 `pitcher_pitch_type_owned`, `batter_weakness_archetype`, and binned
 `batter_threat_score`.
 
-- [ ] **Step 3: Implement fit and prediction**
+- [x] **Step 3: Implement fit and prediction**
 
 `fit(frame, training_manifest_hash=...)` collects legal `TransitionAtom` counts.
 `predict_distribution(context)` selects the first supported backoff level and
 smooths with the broader level. It must never drop rare legal outcomes because
 they are sparse.
 
-- [ ] **Step 4: Implement sampling and log probability**
+- [x] **Step 4: Implement sampling and log probability**
 
 Expose:
 
@@ -239,7 +239,7 @@ support(context) -> int
 
 Use deterministic key ordering so serialization and tests are stable.
 
-- [ ] **Step 5: Verify Phase 3**
+- [x] **Step 5: Verify Phase 3**
 
 ```bash
 uv run pytest tests/models/test_transition_model.py -q
@@ -253,7 +253,7 @@ Expected: PASS.
 - Create: `src/baseball_zerobase/models/transition_artifact.py`
 - Create: `tests/models/test_transition_artifact.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_transition_artifact_round_trip_preserves_predictions(tmp_path: Path) -> None:
@@ -272,7 +272,7 @@ uv run pytest tests/models/test_transition_artifact.py -q
 
 Expected: FAIL because artifact helpers do not exist.
 
-- [ ] **Step 2: Implement deterministic artifact helpers**
+- [x] **Step 2: Implement deterministic artifact helpers**
 
 Artifact JSON must include:
 
@@ -288,7 +288,7 @@ counts
 
 Write JSON with `sort_keys=True` and stable separators.
 
-- [ ] **Step 3: Verify Phase 4**
+- [x] **Step 3: Verify Phase 4**
 
 ```bash
 uv run pytest tests/models/test_transition_artifact.py -q
@@ -304,7 +304,7 @@ Expected: PASS.
 - Create: `tests/models/test_calibration.py`
 - Create: `tests/evaluation/test_transition_evaluation.py`
 
-- [ ] **Step 1: Write failing metric tests**
+- [x] **Step 1: Write failing metric tests**
 
 ```python
 def test_expected_calibration_error_groups_probabilities() -> None:
@@ -324,12 +324,12 @@ uv run pytest tests/models/test_calibration.py -q
 
 Expected: FAIL because calibration metrics do not exist.
 
-- [ ] **Step 2: Implement metrics**
+- [x] **Step 2: Implement metrics**
 
 Implement log loss, Brier score, expected calibration error, support counts, and
 rare-outcome recall for home runs, extra-base hits, walks, strikeouts, and HBP.
 
-- [ ] **Step 3: Write failing component evaluation test**
+- [x] **Step 3: Write failing component evaluation test**
 
 ```python
 def test_evaluate_transition_model_reports_korean_summary() -> None:
@@ -346,12 +346,12 @@ uv run pytest tests/evaluation/test_transition_evaluation.py -q
 
 Expected: FAIL because transition evaluation does not exist.
 
-- [ ] **Step 4: Implement evaluation report**
+- [x] **Step 4: Implement evaluation report**
 
 Create a frozen report dataclass with `to_dict()`. Include English metric fields
 and a concise Korean summary string for generated report compatibility.
 
-- [ ] **Step 5: Verify Phase 5**
+- [x] **Step 5: Verify Phase 5**
 
 ```bash
 uv run pytest tests/models/test_calibration.py tests/evaluation/test_transition_evaluation.py -q
@@ -367,7 +367,7 @@ Expected: PASS.
 - Modify: `README.md`
 - Modify: `README.ko.md`
 
-- [ ] **Step 1: Write failing CLI tests**
+- [x] **Step 1: Write failing CLI tests**
 
 ```python
 def test_transition_model_cli_fit_and_evaluate(tmp_path: Path) -> None:
@@ -389,7 +389,7 @@ uv run pytest tests/test_cli_smoke.py::test_transition_model_cli_fit_and_evaluat
 
 Expected: FAIL because the commands do not exist.
 
-- [ ] **Step 2: Implement CLI commands**
+- [x] **Step 2: Implement CLI commands**
 
 Add:
 
@@ -401,11 +401,11 @@ evaluate-transition-model
 Both commands must use `require_dev_input(...)`, reject locked paths, avoid
 network access, and write deterministic artifacts/reports.
 
-- [ ] **Step 3: Update docs**
+- [x] **Step 3: Update docs**
 
 Update README and README.ko together with the new commands and Milestone 4 scope.
 
-- [ ] **Step 4: Final verification**
+- [x] **Step 4: Final verification**
 
 Run:
 

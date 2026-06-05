@@ -4,12 +4,14 @@ Baseball Zerobase is a clean-room rewrite for a leakage-safe MLB starting-pitche
 strategy research pipeline. This repository must not use code, model weights, or
 processed data from the prior project.
 
-Milestone 1-3 covers data foundations, empirical baselines, and deterministic
-personalization features: immutable source acquisition, starter and lineup
-context, pre-pitch snapshots, as-of starter eligibility, pitcher profiles, batter
-weakness archetypes, batter threat scores, same-day state summaries, empirical
-behavior and transition baselines, inning simulation, and rolling validation.
-Neural models, recommendations, API serving, and web UI work are out of scope.
+Milestone 1-4 covers data foundations, empirical baselines, deterministic
+personalization features, and a contract-first shared transition model:
+immutable source acquisition, starter and lineup context, pre-pitch snapshots,
+as-of starter eligibility, pitcher profiles, batter weakness archetypes, batter
+threat scores, same-day state summaries, empirical behavior and transition
+baselines, inning simulation, rolling validation, and legal transition
+probability distributions. Neural models, recommendations, API serving, and web
+UI work are out of scope.
 
 ## Data Partitions
 
@@ -120,6 +122,15 @@ uv run baseball-zerobase validate-dataset \
 uv run baseball-zerobase evaluate-rolling \
   --dataset data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
   --output-dir reports/generated/rolling
+
+uv run baseball-zerobase fit-transition-model \
+  --dataset data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
+  --output artifacts/models/transition/v0.json
+
+uv run baseball-zerobase evaluate-transition-model \
+  --dataset data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
+  --model artifacts/models/transition/v0.json \
+  --report reports/generated/transition/v0.json
 ```
 
 `prepared_pitch.parquet` must contain development regular-season rows with
@@ -138,6 +149,14 @@ pitch.
 Every Milestone 3 feature family writes an `*_as_of_timestamp` column. Validation
 rejects feature timestamps that are null or not strictly before the target
 `pitch_timestamp`.
+
+## Shared Transition Model
+
+Milestone 4 adds a deterministic shared transition model v0. It fits smoothed
+development-only transition counts, excludes target label columns from model
+features, emits normalized legal `TransitionAtom` distributions, and can be used
+directly by the inning simulator. Component evaluation reports transition log
+loss, calibration error, rare-outcome recall, and Korean summary text.
 
 ## Language Review
 
