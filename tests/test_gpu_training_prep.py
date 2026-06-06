@@ -32,6 +32,14 @@ def test_dataset_builder_downloads_only_missing_normalized_game_feeds() -> None:
     assert 'download-games --game-pks-parquet "$MISSING_GAME_PKS_PATH"' in text
 
 
+def test_dataset_builder_uses_resumable_statcast_chunks() -> None:
+    text = (ROOT / "scripts/build_dev_regular_dataset.sh").read_text(encoding="utf-8")
+
+    assert "download-statcast-dev-regular-chunked" in text
+    assert "data/raw/statcast_chunks/role=dev_regular" in text
+    assert "--chunk-days" in text
+
+
 def test_gpu_training_runbooks_are_bilingual_and_include_next_stage() -> None:
     english = ROOT / "docs/gpu-training-runbook.md"
     korean = ROOT / "docs/gpu-training-runbook.ko.md"

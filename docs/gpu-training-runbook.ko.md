@@ -98,6 +98,12 @@ scripts/train_transition_baseline.sh \
   2022_regular
 ```
 
+build script는 Statcast를 개발 전용 재개 가능 chunk로 받아
+`data/raw/statcast_chunks/role=dev_regular/start=2022-04-07_end=2022-10-05`
+아래에 저장합니다. 이미 있는 chunk parquet는 재사용하며, 재실행하면 누락된 chunk만
+다시 받은 뒤 병합 raw partition을 재생성합니다. 좁은 네트워크 실패를 디버깅할 때만
+`STATCAST_CHUNK_DAYS=3`처럼 기본 7일 chunk 크기를 바꿉니다.
+
 검토 대상:
 
 - `reports/generated/validation/dev_dataset_2022_regular.json`

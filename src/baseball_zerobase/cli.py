@@ -20,7 +20,10 @@ from baseball_zerobase.data.splits import (
     classify_row,
     require_dev_role,
 )
-from baseball_zerobase.data.statcast import download_statcast_range
+from baseball_zerobase.data.statcast import (
+    download_statcast_dev_regular_range_chunked,
+    download_statcast_range,
+)
 from baseball_zerobase.data.starter_lineup import attach_starter_and_lineup_context
 from baseball_zerobase.data.validation import LeakageError, ValidationReport, audit_snapshots
 from baseball_zerobase.evaluation.rolling import (
@@ -91,6 +94,32 @@ def download_statcast_command(
 ) -> None:
     settings = load_settings(config)
     result = download_statcast_range(start, end, settings.project_root)
+    typer.echo(result.data_path)
+
+
+@app.command("download-statcast-dev-regular-chunked")
+def download_statcast_dev_regular_chunked_command(
+    start: date = typer.Option(..., parser=date.fromisoformat),
+    end: date = typer.Option(..., parser=date.fromisoformat),
+    chunk_days: int = typer.Option(7, min=1),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    result = download_statcast_dev_regular_range_chunked(
+        start,
+        end,
+        settings.project_root,
+        chunk_days=chunk_days,
+    )
+    chunk_dir = result.chunk_paths[0].parent if result.chunk_paths else None
+    typer.echo(
+        "Statcast chunk cache: "
+        f"downloaded={result.downloaded_chunk_count} "
+        f"skipped={result.skipped_chunk_count} "
+        f"total={len(result.chunk_paths)} "
+        f"dir={chunk_dir}"
+    )
+    typer.echo(f"Wrote {result.row_count} merged dev regular rows to {result.data_path}")
     typer.echo(result.data_path)
 
 

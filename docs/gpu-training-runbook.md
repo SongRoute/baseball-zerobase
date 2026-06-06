@@ -102,6 +102,13 @@ scripts/train_transition_baseline.sh \
   2022_regular
 ```
 
+The build script downloads Statcast through resumable dev-only chunks under
+`data/raw/statcast_chunks/role=dev_regular/start=2022-04-07_end=2022-10-05`.
+Existing chunk parquet files are reused; rerunning the command retries only
+missing chunks before rebuilding the merged raw partition. Override the default
+seven-day chunk size with `STATCAST_CHUNK_DAYS=3` only when debugging a narrow
+network failure.
+
 Review:
 
 - `reports/generated/validation/dev_dataset_2022_regular.json`
