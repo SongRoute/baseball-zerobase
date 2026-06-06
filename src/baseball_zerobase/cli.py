@@ -8,6 +8,7 @@ import typer
 from baseball_zerobase.config import Settings
 from baseball_zerobase.data.eligibility import add_starter_eligibility
 from baseball_zerobase.data.game_feed import download_games_from_parquet
+from baseball_zerobase.data.merge import merge_dev_regular_datasets
 from baseball_zerobase.data.snapshots import (
     build_development_dataset,
     build_snapshots,
@@ -26,6 +27,7 @@ from baseball_zerobase.data.statcast import (
 )
 from baseball_zerobase.data.starter_lineup import attach_starter_and_lineup_context
 from baseball_zerobase.data.validation import LeakageError, ValidationReport, audit_snapshots
+from baseball_zerobase.evaluation.diagnostics import transition_diagnostics
 from baseball_zerobase.evaluation.rolling import (
     FoldEvaluationReport,
     evaluate_fold,
@@ -372,6 +374,54 @@ def validate_dataset_command(
 
     _write_validation_report(report, output_path)
     typer.echo(f"Wrote validation report to {output_path}")
+
+
+@app.command("merge-dev-datasets")
+def merge_dev_datasets_command(
+    label: str = typer.Argument(...),
+    input_paths: list[Path] = typer.Argument(...),
+    output_parquet: Path | None = typer.Option(None, "--output-parquet"),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    if not input_paths:
+        raise typer.BadParameter("at least one input parquet is required")
+    output_path = output_parquet or Path(
+        f"data/processed/dev_dataset/role=dev_regular/dev_dataset_{label}.parquet"
+    )
+    try:
+        checked_inputs = [require_dev_input(path, settings) for path in input_paths]
+        checked_output = require_dev_input(output_path, settings)
+        manifest = merge_dev_regular_datasets(
+            checked_inputs,
+            checked_output,
+            label=label,
+        )
+    except (LockedDataError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(f"Wrote merged development dataset to {checked_output} ({manifest.path})")
+
+
+@app.command("report-transition-diagnostics")
+def report_transition_diagnostics_command(
+    dataset: Path = typer.Option(..., "--dataset"),
+    report: Path = typer.Option(..., "--report"),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    try:
+        dataset_path = require_dev_input(dataset, settings)
+        report_path = require_dev_input(report, settings)
+        frame = pl.read_parquet(dataset_path)
+        _require_dev_regular_frame(frame, str(dataset_path))
+    except LockedDataError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    payload = transition_diagnostics(frame).to_dict()
+    report_path = report_path.resolve()
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    typer.echo(f"Wrote transition diagnostics report to {report_path}")
 
 
 @app.command("evaluate-rolling")

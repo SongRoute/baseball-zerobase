@@ -126,8 +126,29 @@ scripts/build_dev_regular_dataset.sh 2023-03-30 2023-10-01 2023_regular
 scripts/build_dev_regular_dataset.sh 2024-03-28 2024-09-30 2024_regular
 ```
 
-Next implementation step: add a checked merge script for annual dev datasets.
-The intended merged output is:
+Merge the annual dev regular-season datasets after each annual validation report
+is reviewed:
+
+```bash
+scripts/merge_dev_datasets.sh 2022_2024_regular \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_regular.parquet \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2023_regular.parquet \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2024_regular.parquet
+```
+
+The merge script rejects locked paths, locked 2026 dates, postseason tokens,
+schema mismatch, and non-development regular-season rows. It writes the merged
+manifest and then runs `validate-dataset` on the merged output.
+
+Train the shared transition baseline on the merged dataset:
+
+```bash
+scripts/train_transition_baseline.sh \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_2024_regular.parquet \
+  2022_2024_regular
+```
+
+Primary merged outputs:
 
 ```text
 data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_2024_regular.parquet
@@ -136,36 +157,52 @@ artifacts/models/transition/v0_2022_2024_regular.json
 reports/generated/transition/v0_2022_2024_regular.json
 ```
 
-The merge script should validate each annual input and the merged output before
-training.
-
 ## Stage 5: Diagnostics Before Recommendations
 
-Before Milestone 5, add diagnostics for:
+Before Milestone 5, write the transition diagnostics report:
 
-- log loss by count, base-out state, pitch type, and relative zone
-- rare outcome recall by outcome class
-- home run recall
-- expected calibration error
-- profile coverage
-- early-season shrinkage rate
-- null rate for personalization features
+```bash
+scripts/report_transition_diagnostics.sh \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_2024_regular.parquet \
+  reports/generated/diagnostics/transition_diagnostics_2022_2024_regular.json
+```
+
+The diagnostics include:
+
+- row count
+- pitch type distribution
+- relative zone distribution
+- batter weakness archetype distribution
+- batter threat score bucket distribution
+- pitcher profile reliability weight bucket distribution
+- profile feature null rates
+- pitcher pitch type ownership true rate
+- daily state count summaries
+- label outcome distribution
 
 Use these reports to decide whether the deterministic transition baseline is
 ready for recommendation ranking or needs a Milestone 4.5 smoothing pass.
 
 ## Stage 6: Milestone 5 Recommendation Engine
 
-The next feature milestone should evaluate every pitch type and every 13-zone
-relative coordinate candidate for a target snapshot. Do not drop candidates
-because of historical zone frequency or perceived reachability.
+Milestone 5 prerequisites:
+
+- Evaluate the full candidate pitch type x 13-zone grid for every target
+  snapshot.
+- Do not drop candidates because of historical zone frequency or perceived
+  reachability.
+- Use only target pitch pre-pitch features. All `*_as_of_timestamp` values must
+  remain strictly before `pitch_timestamp`.
+- Use the shared transition model for candidate scoring.
+- Include compact explanations in recommendation output, using pitcher
+  ownership, batter weakness, batter threat, and daily state features.
 
 Expected future command shape:
 
 ```bash
 uv run baseball-zerobase recommend-pitches \
-  --snapshot data/processed/snapshots/role=dev_regular/snapshots_2022_regular_profiled.parquet \
-  --model artifacts/models/transition/v0_2022_regular.json \
+  --snapshot data/processed/snapshots/role=dev_regular/snapshots_2024_regular_profiled.parquet \
+  --model artifacts/models/transition/v0_2022_2024_regular.json \
   --output reports/generated/recommendations/sample_recommendations.json
 ```
 
