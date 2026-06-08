@@ -4,12 +4,12 @@ Baseball Zerobase는 누수 방지 MLB 선발투수 전략 연구 파이프라�
 클린룸 재작성 프로젝트입니다. 이 저장소는 이전 프로젝트의 코드, 모델 가중치,
 또는 처리된 데이터를 사용하면 안 됩니다.
 
-Milestone 1-4의 범위는 데이터 기반, 경험적 베이스라인, 결정론적 개인화 feature,
-계약 우선 공유 전이모델을 포함합니다: 불변 원천 데이터 수집, 선발투수와 라인업
+Milestone 1-5의 범위는 데이터 기반, 경험적 베이스라인, 결정론적 개인화 feature,
+계약 우선 공유 전이모델, transition-proxy 투구 추천 CLI를 포함합니다: 불변 원천 데이터 수집, 선발투수와 라인업
 맥락, 투구 전 스냅샷, as-of 선발 자격, 투수 프로필, 타자 약점 유형, 타자 위협도,
 당일 누적 상태, 경험적 행동 및 전이 베이스라인, 이닝 시뮬레이션, 롤링 검증,
-합법 전이 확률분포를 포함합니다. 신경망 모델, 추천, API 서빙, 웹 UI는 범위
-밖입니다.
+합법 전이 확률분포를 포함합니다. 신경망 모델, 추천용 전체 이닝 value 시뮬레이션,
+API 서빙, 웹 UI는 범위 밖입니다.
 
 ## 데이터 파티션
 
@@ -130,6 +130,14 @@ uv run baseball-zerobase evaluate-transition-model \
   --dataset data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
   --model artifacts/models/transition/v0.json \
   --report reports/generated/transition/v0.json
+
+uv run baseball-zerobase recommend-pitches \
+  --input data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
+  --model artifacts/models/transition/v0.json \
+  --pitch-types FF,SL,CH \
+  --row-index 0 \
+  --top-k 10 \
+  --output reports/generated/recommendations/pitch.json
 ```
 
 `prepared_pitch.parquet`에는 선발투수와 안정 라인업 맥락이 연결된 개발 정규시즌
@@ -153,6 +161,19 @@ count를 smoothing하고, target label column을 model feature에서 제외하�
 합법 `TransitionAtom` 확률분포를 출력하고, 이닝 시뮬레이터에서 직접 사용할 수
 있습니다. 구성요소 평가는 전이 log loss, calibration error, rare outcome recall,
 한글 요약을 보고합니다.
+
+## 투구 추천
+
+Milestone 5는 `recommend-pitches`를 추가합니다. 이 명령은 profiled snapshot 또는
+development dataset의 한 행을 읽고, 모든 candidate에 대해 row action을 덮어쓴 뒤,
+shared transition model로 전체 `pitch_type x 13 relative_zone` grid를 scoring하고,
+간결한 설명이 포함된 ranked JSON 추천을 씁니다.
+
+Zone 빈도, action support, behavior model probability, 도달 가능성 추정은 첫 투구
+candidate를 제거하지 않습니다. Target row의 실제 `pitch_type`, 실제
+`relative_zone`, outcome label, post-pitch state, raw current-pitch measurement는 replay
+label일 뿐 serving feature가 아닙니다. 현재 ranking value는 `transition_proxy`이며,
+즉시 전이 위험 점수입니다. 이 값은 simulated expected inning runs가 아닙니다.
 
 ## GPU 학습 준비
 

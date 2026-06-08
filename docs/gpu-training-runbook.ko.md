@@ -190,14 +190,19 @@ Milestone 5 전제 조건:
 - recommendation output에는 투수 구종 소유, 타자 약점, 타자 위협도, 당일 상태를
   활용한 간결한 설명을 포함합니다.
 
-예상 명령 형태:
+명령 형태:
 
 ```bash
 uv run baseball-zerobase recommend-pitches \
-  --snapshot data/processed/snapshots/role=dev_regular/snapshots_2024_regular_profiled.parquet \
+  --input data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_2024_regular.parquet \
   --model artifacts/models/transition/v0_2022_2024_regular.json \
+  --pitch-types FF,SL,CH \
+  --row-index 0 \
+  --top-k 10 \
   --output reports/generated/recommendations/sample_recommendations.json
 ```
 
-추천 결과에는 ranked candidates, expected transition value, 그리고 투수 구종 소유,
-타자 약점, 타자 위협도, 당일 상태를 사용한 간결한 설명이 포함되어야 합니다.
+추천 결과에는 ranked candidates, `value_type: transition_proxy`, candidate count,
+disabled zone filtering, top transition atoms, 그리고 투수 구종 소유, 타자 약점,
+타자 위협도, 당일 상태를 사용한 간결한 설명이 포함됩니다. Transition-proxy 점수는
+즉시 전이 위험 ranking이며, 전체 이닝 expected runs 시뮬레이션은 아닙니다.

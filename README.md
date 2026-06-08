@@ -4,14 +4,15 @@ Baseball Zerobase is a clean-room rewrite for a leakage-safe MLB starting-pitche
 strategy research pipeline. This repository must not use code, model weights, or
 processed data from the prior project.
 
-Milestone 1-4 covers data foundations, empirical baselines, deterministic
-personalization features, and a contract-first shared transition model:
+Milestone 1-5 covers data foundations, empirical baselines, deterministic
+personalization features, a contract-first shared transition model, and a
+transition-proxy pitch recommendation CLI:
 immutable source acquisition, starter and lineup context, pre-pitch snapshots,
 as-of starter eligibility, pitcher profiles, batter weakness archetypes, batter
 threat scores, same-day state summaries, empirical behavior and transition
 baselines, inning simulation, rolling validation, and legal transition
-probability distributions. Neural models, recommendations, API serving, and web
-UI work are out of scope.
+probability distributions. Neural models, full inning-value simulation for
+recommendations, API serving, and web UI work are out of scope.
 
 ## Data Partitions
 
@@ -131,6 +132,14 @@ uv run baseball-zerobase evaluate-transition-model \
   --dataset data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
   --model artifacts/models/transition/v0.json \
   --report reports/generated/transition/v0.json
+
+uv run baseball-zerobase recommend-pitches \
+  --input data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet \
+  --model artifacts/models/transition/v0.json \
+  --pitch-types FF,SL,CH \
+  --row-index 0 \
+  --top-k 10 \
+  --output reports/generated/recommendations/pitch.json
 ```
 
 `prepared_pitch.parquet` must contain development regular-season rows with
@@ -157,6 +166,20 @@ development-only transition counts, excludes target label columns from model
 features, emits normalized legal `TransitionAtom` distributions, and can be used
 directly by the inning simulator. Component evaluation reports transition log
 loss, calibration error, rare-outcome recall, and Korean summary text.
+
+## Pitch Recommendations
+
+Milestone 5 adds `recommend-pitches`. The command reads one profiled snapshot or
+development dataset row, overwrites the row action for every candidate, scores
+the full `pitch_type x 13 relative_zone` grid with the shared transition model,
+and writes ranked JSON recommendations with compact explanations.
+
+Zone frequency, action support, behavior-model probabilities, and perceived
+reachability never remove first-pitch candidates. Target-row actual
+`pitch_type`, actual `relative_zone`, outcome labels, post-pitch state, and raw
+current-pitch measurements are replay labels only; they are not serving features.
+The current ranking value is `transition_proxy`, an immediate transition-risk
+score, not simulated expected inning runs.
 
 ## GPU Training Preparation
 

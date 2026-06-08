@@ -1,3 +1,4 @@
+import json
 from typer.testing import CliRunner
 from datetime import date, datetime, timedelta
 
@@ -120,6 +121,58 @@ def test_transition_model_cli_fit_and_evaluate(tmp_path) -> None:
     )
     assert eval_result.exit_code == 0, eval_result.stdout
     assert "korean_summary" in report_path.read_text(encoding="utf-8")
+
+
+def test_recommend_pitches_cli_writes_ranked_recommendations(tmp_path) -> None:
+    dataset = tmp_path / "data/processed/dev_dataset/role=dev_regular/dev_dataset.parquet"
+    dataset.parent.mkdir(parents=True)
+    _transition_cli_frame().write_parquet(dataset)
+    model_path = tmp_path / "artifacts/models/transition/v0.json"
+    output_path = tmp_path / "reports/generated/recommendations/pitch.json"
+    config = tmp_path / "configs/base.yaml"
+
+    fit_result = CliRunner().invoke(
+        app,
+        [
+            "fit-transition-model",
+            "--dataset",
+            str(dataset),
+            "--output",
+            str(model_path),
+            "--config",
+            str(config),
+        ],
+    )
+    assert fit_result.exit_code == 0, fit_result.stdout
+
+    recommend_result = CliRunner().invoke(
+        app,
+        [
+            "recommend-pitches",
+            "--input",
+            str(dataset),
+            "--model",
+            str(model_path),
+            "--pitch-types",
+            "FF,SL",
+            "--row-index",
+            "0",
+            "--top-k",
+            "5",
+            "--output",
+            str(output_path),
+            "--config",
+            str(config),
+        ],
+    )
+
+    assert recommend_result.exit_code == 0, recommend_result.stdout
+    assert "recommendations" in recommend_result.stdout
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["candidate_count"] == 26
+    assert payload["zone_filtering"] == "disabled"
+    assert payload["value_type"] == "transition_proxy"
+    assert len(payload["recommendations"]) == 5
 
 
 def _profile_cli_frame() -> pl.DataFrame:
