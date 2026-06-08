@@ -34,6 +34,7 @@ from baseball_zerobase.evaluation.rolling import (
     evaluate_rolling,
 )
 from baseball_zerobase.evaluation.transition import evaluate_transition_model
+from baseball_zerobase.inference.recommender import recommend_pitches
 from baseball_zerobase.models.transition import SharedTransitionModelV0
 from baseball_zerobase.models.transition_artifact import (
     read_transition_artifact,
@@ -357,6 +358,58 @@ def evaluate_transition_model_command(
     typer.echo(f"Wrote transition evaluation report to {output_path}")
 
 
+@app.command("recommend-pitches")
+def recommend_pitches_command(
+    input_path: Path = typer.Option(..., "--input"),
+    model_path: Path = typer.Option(..., "--model"),
+    output: Path | None = typer.Option(None, "--output"),
+    row_index: int = typer.Option(0, min=0),
+    pitch_types: str | None = typer.Option(None, "--pitch-types"),
+    top_k: int = typer.Option(10, min=0),
+    top_outcomes: int = typer.Option(5, min=1),
+    config: Path = typer.Option(Path("configs/base.yaml")),
+) -> None:
+    settings = load_settings(config)
+    input_checked = require_dev_input(input_path, settings)
+    model_checked = require_dev_input(model_path, settings)
+    output_checked = require_dev_input(output, settings) if output is not None else None
+
+    row = _read_recommendation_row(input_checked, row_index)
+    model = read_transition_artifact(model_checked)
+    try:
+        report = recommend_pitches(
+            model,
+            row,
+            pitch_types=pitch_types,
+            top_k=None if top_k == 0 else top_k,
+            top_outcomes=top_outcomes,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    input_summary = dict(report.input_summary)
+    input_summary.update(
+        {
+            "input_path": str(input_checked.resolve()),
+            "model_path": str(model_checked.resolve()),
+            "row_index": row_index,
+        }
+    )
+    payload = {
+        **report.to_dict(),
+        "input_summary": input_summary,
+    }
+    rendered = json.dumps(payload, indent=2, sort_keys=True)
+    if output_checked is None:
+        typer.echo(rendered)
+        return
+
+    output_checked = output_checked.resolve()
+    output_checked.parent.mkdir(parents=True, exist_ok=True)
+    output_checked.write_text(rendered + "\n", encoding="utf-8")
+    typer.echo(f"Wrote recommendations to {output_checked}")
+
+
 @app.command("validate-dataset")
 def validate_dataset_command(
     input_path: Path = typer.Option(..., "--input"),
@@ -435,6 +488,41 @@ def evaluate_rolling_command(
     report_dir = require_dev_input(output_dir, settings)
     summary = evaluate_rolling(dataset_path, report_dir, project_root=settings.project_root)
     typer.echo(f"Wrote {len(summary.fold_reports)} rolling fold reports to {summary.output_dir}")
+
+
+def _read_recommendation_row(path: Path, row_index: int) -> dict[str, object]:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        rows = _recommendation_rows_from_json(payload)
+        if row_index >= len(rows):
+            raise typer.BadParameter(
+                f"row-index {row_index} is out of range for {len(rows)} JSON row(s)"
+            )
+        return rows[row_index]
+
+    frame = pl.read_parquet(path)
+    _require_dev_regular_frame(frame, str(path))
+    if row_index >= frame.height:
+        raise typer.BadParameter(
+            f"row-index {row_index} is out of range for {frame.height} parquet row(s)"
+        )
+    return dict(frame.row(row_index, named=True))
+
+
+def _recommendation_rows_from_json(payload: object) -> list[dict[str, object]]:
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict) and isinstance(payload.get("rows"), list):
+        rows = payload["rows"]
+    else:
+        rows = [payload]
+    typed_rows: list[dict[str, object]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise typer.BadParameter("recommendation JSON input must contain object rows")
+        typed_rows.append({str(key): value for key, value in row.items()})
+    return typed_rows
 
 
 def _write_validation_report(report: ValidationReport, report_path: Path) -> None:

@@ -197,15 +197,20 @@ Milestone 5 prerequisites:
 - Include compact explanations in recommendation output, using pitcher
   ownership, batter weakness, batter threat, and daily state features.
 
-Expected future command shape:
+Command shape:
 
 ```bash
 uv run baseball-zerobase recommend-pitches \
-  --snapshot data/processed/snapshots/role=dev_regular/snapshots_2024_regular_profiled.parquet \
+  --input data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_2024_regular.parquet \
   --model artifacts/models/transition/v0_2022_2024_regular.json \
+  --pitch-types FF,SL,CH \
+  --row-index 0 \
+  --top-k 10 \
   --output reports/generated/recommendations/sample_recommendations.json
 ```
 
-Recommendation outputs should include the ranked candidates, expected transition
-value, and a compact explanation using pitcher ownership, batter weakness,
-batter threat, and daily state features.
+Recommendation outputs include ranked candidates, `value_type:
+transition_proxy`, candidate count, disabled zone filtering, top transition
+atoms, and compact explanations using pitcher ownership, batter weakness,
+batter threat, and daily state features. The transition-proxy score is an
+immediate transition-risk ranker, not full simulated expected inning runs.
