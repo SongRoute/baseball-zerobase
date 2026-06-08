@@ -98,6 +98,12 @@ scripts/train_transition_baseline.sh \
   2022_regular
 ```
 
+build script는 Statcast를 개발 전용 재개 가능 chunk로 받아
+`data/raw/statcast_chunks/role=dev_regular/start=2022-04-07_end=2022-10-05`
+아래에 저장합니다. 이미 있는 chunk parquet는 재사용하며, 재실행하면 누락된 chunk만
+다시 받은 뒤 병합 raw partition을 재생성합니다. 좁은 네트워크 실패를 디버깅할 때만
+`STATCAST_CHUNK_DAYS=3`처럼 기본 7일 chunk 크기를 바꿉니다.
+
 검토 대상:
 
 - `reports/generated/validation/dev_dataset_2022_regular.json`
@@ -115,8 +121,29 @@ scripts/build_dev_regular_dataset.sh 2023-03-30 2023-10-01 2023_regular
 scripts/build_dev_regular_dataset.sh 2024-03-28 2024-09-30 2024_regular
 ```
 
-다음 구현 단계는 연도별 dev dataset을 검증 후 병합하는 script를 추가하는 것입니다.
-의도한 병합 산출물:
+각 연도별 validation report를 검토한 뒤 annual dev regular-season dataset을
+병합합니다:
+
+```bash
+scripts/merge_dev_datasets.sh 2022_2024_regular \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_regular.parquet \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2023_regular.parquet \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2024_regular.parquet
+```
+
+merge script는 locked path, locked 2026 날짜, postseason token, schema mismatch,
+development regular-season이 아닌 row를 거부합니다. 병합 manifest를 쓴 뒤 merged
+output에 대해 `validate-dataset`을 실행합니다.
+
+병합 dataset으로 공유 전이 baseline을 학습합니다:
+
+```bash
+scripts/train_transition_baseline.sh \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_2024_regular.parquet \
+  2022_2024_regular
+```
+
+주요 병합 산출물:
 
 ```text
 data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_2024_regular.parquet
@@ -125,35 +152,50 @@ artifacts/models/transition/v0_2022_2024_regular.json
 reports/generated/transition/v0_2022_2024_regular.json
 ```
 
-병합 script는 연도별 입력과 병합 결과를 모두 validation한 뒤 학습으로 넘겨야 합니다.
-
 ## Stage 5: 추천 전 진단
 
-Milestone 5 전에 다음 진단을 추가합니다:
+Milestone 5 전에 전이 진단 리포트를 생성합니다:
 
-- count, base-out state, pitch type, relative zone별 log loss
-- outcome class별 rare outcome recall
-- home run recall
-- expected calibration error
-- profile coverage
-- early-season shrinkage rate
-- 개인화 feature null rate
+```bash
+scripts/report_transition_diagnostics.sh \
+  data/processed/dev_dataset/role=dev_regular/dev_dataset_2022_2024_regular.parquet \
+  reports/generated/diagnostics/transition_diagnostics_2022_2024_regular.json
+```
+
+진단 항목:
+
+- row count
+- pitch type distribution
+- relative zone distribution
+- batter weakness archetype distribution
+- batter threat score bucket distribution
+- pitcher profile reliability weight bucket distribution
+- profile feature null rates
+- pitcher pitch type ownership true rate
+- daily state count summary
+- label outcome distribution
 
 이 리포트로 결정론적 전이 baseline을 추천 ranking에 사용할 수 있는지, 아니면
 Milestone 4.5 smoothing 보강이 필요한지 판단합니다.
 
 ## Stage 6: Milestone 5 추천 엔진
 
-다음 feature milestone은 target snapshot에서 모든 pitch type과 13개 상대좌표 zone
-후보를 평가해야 합니다. 과거 zone 빈도나 도달 가능성을 이유로 후보를 제거하지
-않습니다.
+Milestone 5 전제 조건:
+
+- 모든 target snapshot에서 candidate pitch type x 13-zone 전체 grid를 평가합니다.
+- 과거 zone 빈도나 도달 가능성을 이유로 후보를 제거하지 않습니다. 후보 제거 금지.
+- target pitch 이전 feature만 사용합니다. 모든 `*_as_of_timestamp` 값은
+  `pitch_timestamp`보다 엄격히 이전이어야 합니다.
+- candidate scoring에는 shared transition model을 사용합니다.
+- recommendation output에는 투수 구종 소유, 타자 약점, 타자 위협도, 당일 상태를
+  활용한 간결한 설명을 포함합니다.
 
 예상 명령 형태:
 
 ```bash
 uv run baseball-zerobase recommend-pitches \
-  --snapshot data/processed/snapshots/role=dev_regular/snapshots_2022_regular_profiled.parquet \
-  --model artifacts/models/transition/v0_2022_regular.json \
+  --snapshot data/processed/snapshots/role=dev_regular/snapshots_2024_regular_profiled.parquet \
+  --model artifacts/models/transition/v0_2022_2024_regular.json \
   --output reports/generated/recommendations/sample_recommendations.json
 ```
 

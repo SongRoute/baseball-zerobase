@@ -2,6 +2,7 @@ import json
 from datetime import date
 
 import pandas as pd
+import polars as pl
 import pytest
 
 from baseball_zerobase.data.manifest import ManifestConflictError, sha256_file
@@ -204,4 +205,104 @@ def test_download_statcast_rejects_mixed_dataset_roles_before_writing(
         download_statcast_range(date(2024, 4, 1), date(2026, 4, 1), tmp_path)
 
     assert list(tmp_path.rglob("*.parquet")) == []
+    assert list(tmp_path.rglob("*.manifest.json")) == []
+
+
+def test_download_statcast_dev_regular_chunked_writes_chunks_and_merged_partition(
+    tmp_path, monkeypatch
+) -> None:
+    calls: list[dict[str, str]] = []
+    cache_enabled: list[bool] = []
+
+    def fake_statcast(**kwargs: str) -> pd.DataFrame:
+        calls.append(kwargs)
+        return pd.concat(
+            [
+                statcast_frame(game_pk=len(calls) * 10 + 1, game_date=kwargs["start_dt"]),
+                statcast_frame(game_pk=len(calls) * 10 + 2, game_date=kwargs["end_dt"]),
+            ],
+            ignore_index=True,
+        )
+
+    monkeypatch.setattr("baseball_zerobase.data.statcast.pybaseball_statcast", fake_statcast)
+    monkeypatch.setattr(
+        "baseball_zerobase.data.statcast.pybaseball_cache.enable",
+        lambda: cache_enabled.append(True),
+    )
+
+    result = statcast.download_statcast_dev_regular_range_chunked(
+        date(2024, 4, 1),
+        date(2024, 4, 3),
+        tmp_path,
+        chunk_days=2,
+    )
+
+    assert cache_enabled == [True]
+    assert calls == [
+        {"start_dt": "2024-04-01", "end_dt": "2024-04-02"},
+        {"start_dt": "2024-04-03", "end_dt": "2024-04-03"},
+    ]
+    assert (
+        result.data_path == tmp_path / "data/raw/statcast/start=2024-04-01_end=2024-04-03.parquet"
+    )
+    assert result.chunk_paths == (
+        tmp_path
+        / "data/raw/statcast_chunks/role=dev_regular/start=2024-04-01_end=2024-04-03/chunk_start=2024-04-01_end=2024-04-02.parquet",
+        tmp_path
+        / "data/raw/statcast_chunks/role=dev_regular/start=2024-04-01_end=2024-04-03/chunk_start=2024-04-03_end=2024-04-03.parquet",
+    )
+    assert result.downloaded_chunk_count == 2
+    assert result.skipped_chunk_count == 0
+
+    merged = pl.read_parquet(result.data_path)
+    assert merged.height == 4
+    assert set(merged.get_column("game_type").to_list()) == {"R"}
+
+
+def test_download_statcast_dev_regular_chunked_skips_existing_chunks(tmp_path, monkeypatch) -> None:
+    existing_chunk = tmp_path / (
+        "data/raw/statcast_chunks/role=dev_regular/"
+        "start=2024-04-01_end=2024-04-02/"
+        "chunk_start=2024-04-01_end=2024-04-01.parquet"
+    )
+    existing_chunk.parent.mkdir(parents=True)
+    pl.from_pandas(statcast_frame(game_pk=101, game_date="2024-04-01")).write_parquet(
+        existing_chunk
+    )
+    calls: list[dict[str, str]] = []
+
+    def fake_statcast(**kwargs: str) -> pd.DataFrame:
+        calls.append(kwargs)
+        return statcast_frame(game_pk=202, game_date=kwargs["start_dt"])
+
+    monkeypatch.setattr("baseball_zerobase.data.statcast.pybaseball_statcast", fake_statcast)
+
+    result = statcast.download_statcast_dev_regular_range_chunked(
+        date(2024, 4, 1),
+        date(2024, 4, 2),
+        tmp_path,
+        chunk_days=1,
+    )
+
+    assert calls == [{"start_dt": "2024-04-02", "end_dt": "2024-04-02"}]
+    assert result.downloaded_chunk_count == 1
+    assert result.skipped_chunk_count == 1
+    assert set(pl.read_parquet(result.data_path).get_column("game_pk").to_list()) == {101, 202}
+
+
+def test_download_statcast_dev_regular_chunked_rejects_non_regular_game_type(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "baseball_zerobase.data.statcast.pybaseball_statcast",
+        lambda **kwargs: statcast_frame(game_type="F"),
+    )
+
+    with pytest.raises(ValueError, match="regular-season game_type R"):
+        statcast.download_statcast_dev_regular_range_chunked(
+            date(2024, 4, 1),
+            date(2024, 4, 1),
+            tmp_path,
+        )
+
     assert list(tmp_path.rglob("*.manifest.json")) == []

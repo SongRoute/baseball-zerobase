@@ -446,9 +446,10 @@ def _prepared_rows(
             row["as_of_timestamp"], previous_completed_joined = previous_completed
             if not previous_completed_joined:
                 row["timestamp_joined"] = False
-        previous_completed_by_game[game_pk] = (completed_timestamp, bool(row["timestamp_joined"]))
-        if row["as_of_timestamp"] >= pitch_timestamp and not bool(row["timestamp_joined"]):
+        if row["as_of_timestamp"] >= pitch_timestamp:
             row["as_of_timestamp"] = pitch_timestamp - timedelta(microseconds=1)
+            row["timestamp_joined"] = False
+        previous_completed_by_game[game_pk] = (completed_timestamp, bool(row["timestamp_joined"]))
         sortable_rows.append(row)
     return sortable_rows
 

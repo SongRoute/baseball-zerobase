@@ -73,11 +73,15 @@ mkdir -p data/work \
   data/processed/dev_dataset/role=dev_regular \
   reports/generated/validation
 
-echo "== Download Statcast dev regular range =="
+echo "== Download Statcast dev regular range with resumable chunks =="
+STATCAST_CHUNK_DAYS="${STATCAST_CHUNK_DAYS:-7}"
+STATCAST_CHUNK_ROOT="data/raw/statcast_chunks/role=dev_regular/start=${START_DATE}_end=${END_DATE}"
+echo "Statcast chunk cache: $STATCAST_CHUNK_ROOT (chunk_days=$STATCAST_CHUNK_DAYS)"
 STATCAST_PATH="$(
-  uv run baseball-zerobase download-statcast \
+  uv run baseball-zerobase download-statcast-dev-regular-chunked \
     --start "$START_DATE" \
-    --end "$END_DATE" | tail -n 1
+    --end "$END_DATE" \
+    --chunk-days "$STATCAST_CHUNK_DAYS" | tail -n 1
 )"
 reject_locked_path "$STATCAST_PATH"
 echo "Statcast parquet: $STATCAST_PATH"

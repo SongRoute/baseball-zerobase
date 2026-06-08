@@ -81,6 +81,56 @@ def test_missing_normalized_pitch_event_is_preserved_as_unjoined() -> None:
     assert snapshots.row(0, named=True)["timestamp_joined"] is False
 
 
+def test_joined_pitch_is_unavailable_when_previous_completion_overlaps_target_pitch() -> None:
+    pitch_frame = pl.DataFrame(
+        {
+            "game_pk": [12345, 12345],
+            "game_date": [date(2024, 4, 1), date(2024, 4, 1)],
+            "game_type": ["R", "R"],
+            "at_bat_number": [1, 1],
+            "pitch_number": [1, 2],
+            "inning": [1, 1],
+            "inning_topbot": ["Top", "Top"],
+            "game_start_timestamp": [
+                datetime(2024, 4, 1, 23, 0),
+                datetime(2024, 4, 1, 23, 0),
+            ],
+            "is_official_starter_pitch": [True, True],
+            "lineup_stable": [True, True],
+            "starter_eligible": [True, True],
+            "pitch_type": ["FF", "FF"],
+            "relative_zone": ["middle_middle", "middle_middle"],
+            "description": ["ball", "called_strike"],
+            "events": [None, None],
+        }
+    )
+    events_frame = pl.DataFrame(
+        {
+            "game_pk": [12345, 12345],
+            "at_bat_number": [1, 1],
+            "pitch_number": [1, 2],
+            "pitch_timestamp": [
+                datetime(2024, 4, 1, 23, 5, 10),
+                datetime(2024, 4, 1, 23, 5, 30),
+            ],
+            "completed_event_timestamp": [
+                datetime(2024, 4, 1, 23, 5, 31),
+                datetime(2024, 4, 1, 23, 5, 32),
+            ],
+        }
+    )
+
+    snapshots = build_snapshots(pitch_frame, events_frame)
+    second = snapshots.row(1, named=True)
+
+    assert second["as_of_timestamp"] == datetime(2024, 4, 1, 23, 5, 29, 999999)
+    assert second["timestamp_joined"] is False
+    eligible = snapshots.with_columns(pl.lit(True).alias("starter_eligible"))
+    dataset = build_development_dataset(eligible)
+    assert dataset.frame.get_column("pitch_number").to_list() == [1]
+    assert dataset.filter_counts["timestamp_joined_rows"] == 1
+
+
 def test_snapshot_dataset_conflict_leaves_existing_data_and_manifest(
     tmp_path: Path,
 ) -> None:
