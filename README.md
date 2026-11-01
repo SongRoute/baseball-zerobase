@@ -1,5 +1,15 @@
 # Baseball Zerobase
 
+[한국어 문서](README.ko.md)
+
+## At a glance
+
+- **Purpose:** research MLB starting-pitcher strategy with data available before each pitch.
+- **Pipeline:** source acquisition → pre-pitch snapshots → time-aware features → transition modeling → ranked pitch candidates.
+- **Engineering focus:** leakage prevention, rolling validation, reproducible CLI workflows, and automated quality checks.
+- **Scope:** recommendations use an immediate transition-risk proxy, not expected inning runs. This repository does not establish real-world recommendation effectiveness.
+
+
 Baseball Zerobase is a clean-room rewrite for a leakage-safe MLB starting-pitcher
 strategy research pipeline. This repository must not use code, model weights, or
 processed data from the prior project.
