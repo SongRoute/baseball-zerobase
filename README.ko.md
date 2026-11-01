@@ -1,5 +1,7 @@
 # Baseball Zerobase
 
+![Baseball Zerobase data and recommendation pipeline](docs/images/pipeline.svg)
+
 [English](README.md)
 
 ## 한눈에 보기
